@@ -111,29 +111,8 @@ echo "Installing qwen-vl-utils>=0.0.8..."
 /opt/venv/bin/python3 -m pip install "qwen-vl-utils>=0.0.8"
 echo "✅ qwen-vl-utils installed"
 
-# Clone ComfyUI-VAE-Utils custom node
 CUSTOM_NODES_DIR="$NETWORK_VOLUME/ComfyUI/custom_nodes"
-VAE_UTILS_DIR="$CUSTOM_NODES_DIR/ComfyUI-VAE-Utils"
 mkdir -p "$CUSTOM_NODES_DIR"
-if [ -d "$VAE_UTILS_DIR" ]; then
-    echo "🗑️  Deleting existing ComfyUI-VAE-Utils directory..."
-    rm -rf "$VAE_UTILS_DIR"
-fi
-echo "📥 Cloning ComfyUI-VAE-Utils custom node..."
-cd "$CUSTOM_NODES_DIR"
-git clone https://github.com/spacepxl/ComfyUI-VAE-Utils.git
-echo "✅ ComfyUI-VAE-Utils cloned successfully"
-
-# Clone ComfyUI-FSampler custom node
-FSAMPLER_DIR="$CUSTOM_NODES_DIR/ComfyUI-FSampler"
-if [ ! -d "$FSAMPLER_DIR" ]; then
-    echo "📥 Cloning ComfyUI-FSampler custom node..."
-    cd "$CUSTOM_NODES_DIR"
-    git clone https://github.com/obisin/ComfyUI-FSampler.git
-    echo "✅ ComfyUI-FSampler cloned successfully"
-else
-    echo "✅ ComfyUI-FSampler already exists, skipping clone."
-fi
 
 # Clone ComfyUI-HMNodes custom node if GITHUB_PAT is set
 if [ -n "$GITHUB_PAT" ]; then
@@ -215,58 +194,9 @@ download_model() {
 }
 
 
-download_model "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_bf16.safetensors" "$DIFFUSION_MODELS_DIR/qwen_image_bf16.safetensors"
-download_model "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_2512_bf16.safetensors" "$DIFFUSION_MODELS_DIR/qwen_image_2512_bf16.safetensors"
-download_model "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_bf16.safetensors" "$DIFFUSION_MODELS_DIR/qwen_image_edit_2509_bf16.safetensors"
-download_model "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b.safetensors" "$TEXT_ENCODERS_DIR/qwen_2.5_vl_7b.safetensors"
-download_model "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors" "$VAE_DIR/qwen_image_vae.safetensors"
-download_model "https://huggingface.co/spacepxl/Wan2.1-VAE-upscale2x/resolve/main/Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors" "$VAE_DIR/Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors"
-download_model "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-8steps-V1.1.safetensors" "$LORAS_DIR/Qwen-Image-Lightning-8steps-V1.1.safetensors"
-download_model "https://objectstorage.us-phoenix-1.oraclecloud.com/n/ax6ygfvpvzka/b/open-modeldb-files/o/1x-ITF-SkinDiffDetail-Lite-v1.pth" "$UPSCALE_MODELS_DIR/1x-ITF-SkinDiffDetail-Lite-v1.pth"
-
-# Download z_image models if download_z_image is set to true
-if [ "$download_z_image" = "true" ]; then
-    echo "📥 download_z_image is set to true. Downloading z_image models..."
-    download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "$DIFFUSION_MODELS_DIR/z_image_turbo_bf16.safetensors"
-    download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors"
-    download_model "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors" "$VAE_DIR/ae.safetensors"
-    echo "✅ z_image model downloads scheduled"
-else
-    echo "⏭️  download_z_image is not set to true. Skipping z_image model downloads."
-fi
-
-# Download MultiAngle.safetensors to LORAS_DIR using wget
-mkdir -p "$LORAS_DIR"
-if [ ! -f "$LORAS_DIR/MultiAngle.safetensors" ]; then
-    echo "📥 Downloading MultiAngle.safetensors to $LORAS_DIR..."
-    wget -O "$LORAS_DIR/MultiAngle.safetensors" "https://huggingface.co/Hearmeman/MultiAngleQwen/resolve/main/MultiAngle.safetensors"
-else
-    echo "✅ MultiAngle.safetensors already exists, skipping download."
-fi
-
-# Download linaZ.safetensors LoRA from HuggingFace
-if [ ! -f "$LORAS_DIR/linaZ.safetensors" ]; then
-    echo "📥 Downloading linaZ.safetensors to $LORAS_DIR..."
-    wget --header="Authorization: Bearer $HF_TOKEN" \
-        -O "$LORAS_DIR/linaZ.safetensors" \
-        "https://huggingface.co/Maverkk/linaZ/resolve/main/adapter_model-2.safetensors"
-else
-    echo "✅ linaZ.safetensors already exists, skipping download."
-fi
-
-# Download additional models
-echo "📥 Starting additional model downloads..."
-
-if [ ! -f "$NETWORK_VOLUME/ComfyUI/models/upscale_models/4xLSDIR.pth" ]; then
-    if [ -f "/4xLSDIR.pth" ]; then
-        mv "/4xLSDIR.pth" "$NETWORK_VOLUME/ComfyUI/models/upscale_models/4xLSDIR.pth"
-        echo "Moved 4xLSDIR.pth to the correct location."
-    else
-        echo "4xLSDIR.pth not found in the root directory."
-    fi
-else
-    echo "4xLSDIR.pth already exists. Skipping."
-fi
+download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "$DIFFUSION_MODELS_DIR/z_image_turbo_bf16.safetensors"
+download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors"
+download_model "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors" "$VAE_DIR/ae.safetensors"
 
 echo "Finished downloading models!"
 
