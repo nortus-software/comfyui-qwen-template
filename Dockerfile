@@ -47,8 +47,21 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     /usr/bin/yes | comfy --workspace /ComfyUI install
 
+# Pre-install qwen-vl-utils and opencv
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install "qwen-vl-utils>=0.0.8" opencv-python
+
+# Pre-build SageAttention (saves ~5 min per pod startup)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    cd /tmp && \
+    git clone --depth 1 https://github.com/thu-ml/SageAttention.git && \
+    cd SageAttention && \
+    git fetch --depth 1 origin 68de379 && \
+    git checkout 68de379 && \
+    EXT_PARALLEL=4 NVCC_APPEND_FLAGS="--threads 8" MAX_JOBS=32 pip install . && \
+    rm -rf /tmp/SageAttention
+
 FROM base AS final
-RUN python -m pip install opencv-python
 
 RUN for repo in \
     https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git \
@@ -76,9 +89,9 @@ RUN for repo in \
         cd /ComfyUI/custom_nodes; \
         repo_dir=$(basename "$repo" .git); \
         if [ "$repo" = "https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git" ]; then \
-            git clone --recursive "$repo"; \
+            git clone --depth 1 --recursive "$repo"; \
         else \
-            git clone "$repo"; \
+            git clone --depth 1 "$repo"; \
         fi; \
         if [ -f "/ComfyUI/custom_nodes/$repo_dir/requirements.txt" ]; then \
             pip install -r "/ComfyUI/custom_nodes/$repo_dir/requirements.txt"; \

@@ -23,20 +23,7 @@ else
     echo "aria2 is already installed"
 fi
 
-echo "Starting SageAttention build..."
-
-(
-    export EXT_PARALLEL=4 NVCC_APPEND_FLAGS="--threads 8" MAX_JOBS=32
-    cd /tmp
-    git clone https://github.com/thu-ml/SageAttention.git
-    cd SageAttention
-    git reset --hard 68de379
-    pip install -e .
-    echo "SageAttention build completed" > /tmp/sage_build_done
-) > /tmp/sage_build.log 2>&1 &
-
-SAGE_PID=$!
-echo "SageAttention build started in background (PID: $SAGE_PID)"
+echo "SageAttention is pre-built in the Docker image"
 
 # Check if NETWORK_VOLUME exists; if not, use root directory instead
 if [ ! -d "$NETWORK_VOLUME" ]; then
@@ -94,22 +81,17 @@ else
     echo "Directory already exists, skipping move."
 fi
 
-# Update ComfyUI to master branch and pull latest changes
-echo "Updating ComfyUI repository..."
-cd "$COMFYUI_DIR"
-git checkout master
-git pull
-echo "✅ ComfyUI repository updated"
-
-# Install ComfyUI requirements
-echo "Installing ComfyUI requirements..."
-/opt/venv/bin/python3 -m pip install -r "$NETWORK_VOLUME/ComfyUI/requirements.txt"
-echo "✅ ComfyUI requirements installed"
-
-# Install qwen-vl-utils
-echo "Installing qwen-vl-utils>=0.0.8..."
-/opt/venv/bin/python3 -m pip install "qwen-vl-utils>=0.0.8"
-echo "✅ qwen-vl-utils installed"
+# Update ComfyUI only if UPDATE_COMFYUI is set
+if [ "$UPDATE_COMFYUI" = "true" ]; then
+    echo "Updating ComfyUI repository..."
+    cd "$COMFYUI_DIR"
+    git checkout master
+    git pull
+    /opt/venv/bin/python3 -m pip install -r "$NETWORK_VOLUME/ComfyUI/requirements.txt"
+    echo "✅ ComfyUI updated"
+else
+    echo "Using pre-built ComfyUI from image (set UPDATE_COMFYUI=true to update)"
+fi
 
 CUSTOM_NODES_DIR="$NETWORK_VOLUME/ComfyUI/custom_nodes"
 mkdir -p "$CUSTOM_NODES_DIR"
@@ -173,12 +155,6 @@ else
     echo "⏭️  GITHUB_PAT not set. Skipping z_image_first_frame_match workflow clone."
 fi
 
-echo "Downloading CivitAI download script to /usr/local/bin"
-git clone "https://github.com/Hearmeman24/CivitAI_Downloader.git" || { echo "Git clone failed"; exit 1; }
-mv CivitAI_Downloader/download_with_aria.py "/usr/local/bin/" || { echo "Move failed"; exit 1; }
-chmod +x "/usr/local/bin/download_with_aria.py" || { echo "Chmod failed"; exit 1; }
-rm -rf CivitAI_Downloader  # Clean up the cloned repo
-
 download_model() {
     local url="$1"
     local full_path="$2"
@@ -222,34 +198,11 @@ download_model "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/
 
 echo "Finished downloading models!"
 
-declare -A MODEL_CATEGORIES=(
-    ["$NETWORK_VOLUME/ComfyUI/models/loras"]="$LORAS_IDS_TO_DOWNLOAD"
-    ["$NETWORK_VOLUME/ComfyUI/models/checkpoints"]="$SDXL_MODEL_IDS_TO_DOWNLOAD"
-)
-
-# Counter to track background jobs
-download_count=0
-
-# Ensure directories exist and schedule downloads in background
-for TARGET_DIR in "${!MODEL_CATEGORIES[@]}"; do
-    mkdir -p "$TARGET_DIR"
-    IFS=',' read -ra MODEL_IDS <<< "${MODEL_CATEGORIES[$TARGET_DIR]}"
-
-    for MODEL_ID in "${MODEL_IDS[@]}"; do
-        sleep 6
-        echo "🚀 Scheduling download: $MODEL_ID to $TARGET_DIR"
-        (cd "$TARGET_DIR" && download_with_aria.py -m "$MODEL_ID") &
-        ((download_count++))
-    done
-done
-
-echo "📋 Scheduled $download_count downloads in background"
-
-# Wait for all downloads to complete
+# Wait for all aria2c downloads to complete
 echo "⏳ Waiting for downloads to complete..."
 while pgrep -x "aria2c" > /dev/null; do
     echo "🔽 Downloads still in progress..."
-    sleep 5  # Check every 5 seconds
+    sleep 5
 done
 
 echo "✅ All models downloaded successfully!"
@@ -322,31 +275,11 @@ fi
 echo "Config file setup complete!"
 echo "Default preview method updated to 'auto'"
 
-# Wait for SageAttention build to complete and check status
-while kill -0 "$SAGE_PID" 2>/dev/null; do
-    echo "🛠️  SageAttention is currently installing... (this can take around 5 minutes)"
-    sleep 10
-done
-
-# Check if build completed successfully
-SAGE_ATTENTION_AVAILABLE=false
-if [ -f "/tmp/sage_build_done" ]; then
-    SAGE_ATTENTION_AVAILABLE=true
-    echo "✅ SageAttention build completed successfully"
-else
-    echo "⚠️  SageAttention build failed. Launching ComfyUI without --use-sage-attention flag"
-    echo "Build log available at /tmp/sage_build.log"
-fi
-
 URL="http://127.0.0.1:8188"
 echo "Starting ComfyUI"
 
 # Build ComfyUI command with optional flags
-COMFYUI_CMD="python3 $NETWORK_VOLUME/ComfyUI/main.py --listen"
-
-if [ "$SAGE_ATTENTION_AVAILABLE" == "true" ]; then
-  COMFYUI_CMD="$COMFYUI_CMD --use-sage-attention"
-fi
+COMFYUI_CMD="python3 $NETWORK_VOLUME/ComfyUI/main.py --listen --use-sage-attention"
 
 if [ "$USE_EXTRA_MODEL_PATHS" == "true" ]; then
   COMFYUI_CMD="$COMFYUI_CMD --extra-model-paths-config /comfyui-qwen-template/src/extra_model_paths.yaml"
