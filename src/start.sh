@@ -331,7 +331,11 @@ if [ "$USE_EXTRA_MODEL_PATHS" == "true" ]; then
 fi
 
 if [ -n "$DEFAULT_WORKFLOW" ] && [ -f "$DEFAULT_WORKFLOW" ]; then
-  COMFYUI_CMD="$COMFYUI_CMD --default-workflow $DEFAULT_WORKFLOW"
+  # Set as the default workflow that loads when ComfyUI opens
+  DEFAULT_GRAPH_DIR="$NETWORK_VOLUME/ComfyUI/web/assets"
+  mkdir -p "$DEFAULT_GRAPH_DIR"
+  cp "$DEFAULT_WORKFLOW" "$DEFAULT_GRAPH_DIR/defaultGraph.json"
+  echo "✅ Default workflow set: $DEFAULT_WORKFLOW"
 fi
 
 nohup $COMFYUI_CMD > "$NETWORK_VOLUME/comfyui_${RUNPOD_POD_ID}_nohup.log" 2>&1 &
