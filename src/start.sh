@@ -141,7 +141,7 @@ if [ -n "$GITHUB_PAT" ]; then
     if [ ! -d "$HMNODES_DIR" ]; then
         echo "📥 GITHUB_PAT detected. Cloning ComfyUI-HMNodes custom node..."
         cd "$CUSTOM_NODES_DIR"
-        if git clone "https://${GITHUB_PAT}@github.com/Hearmeman24/ComfyUI-HMNodes.git" 2>&1 | tee /tmp/hmnodes_clone.log; then
+        if git clone "https://${GITHUB_PAT}@github.com/nortus-software/ComfyUI-HMNodes.git" 2>&1 | tee /tmp/hmnodes_clone.log; then
             echo "✅ ComfyUI-HMNodes cloned successfully"
         else
             echo "❌ Failed to clone ComfyUI-HMNodes. Error details:"
@@ -152,6 +152,24 @@ if [ -n "$GITHUB_PAT" ]; then
     fi
 else
     echo "⏭️  GITHUB_PAT not set. Skipping ComfyUI-HMNodes clone."
+fi
+
+# Clone z_image_first_frame_match workflow repo
+if [ -n "$GITHUB_PAT" ]; then
+    WORKFLOW_REPO_DIR="/tmp/z_image_first_frame_match"
+    rm -rf "$WORKFLOW_REPO_DIR"
+    echo "📥 Cloning z_image_first_frame_match workflow repo..."
+    if git clone "https://${GITHUB_PAT}@github.com/nortus-software/z_image_first_frame_match.git" "$WORKFLOW_REPO_DIR" 2>&1; then
+        mkdir -p "$WORKFLOW_DIR"
+        cp "$WORKFLOW_REPO_DIR"/*.json "$WORKFLOW_DIR/"
+        # Set the first JSON file as the default workflow
+        DEFAULT_WORKFLOW=$(find "$WORKFLOW_REPO_DIR" -maxdepth 1 -name "*.json" | head -n 1)
+        echo "✅ Workflow cloned and copied. Default workflow: $DEFAULT_WORKFLOW"
+    else
+        echo "❌ Failed to clone z_image_first_frame_match repo"
+    fi
+else
+    echo "⏭️  GITHUB_PAT not set. Skipping z_image_first_frame_match workflow clone."
 fi
 
 echo "Downloading CivitAI download script to /usr/local/bin"
@@ -224,6 +242,16 @@ if [ ! -f "$LORAS_DIR/MultiAngle.safetensors" ]; then
     wget -O "$LORAS_DIR/MultiAngle.safetensors" "https://huggingface.co/Hearmeman/MultiAngleQwen/resolve/main/MultiAngle.safetensors"
 else
     echo "✅ MultiAngle.safetensors already exists, skipping download."
+fi
+
+# Download linaZ.safetensors LoRA from HuggingFace
+if [ ! -f "$LORAS_DIR/linaZ.safetensors" ]; then
+    echo "📥 Downloading linaZ.safetensors to $LORAS_DIR..."
+    wget --header="Authorization: Bearer $HF_TOKEN" \
+        -O "$LORAS_DIR/linaZ.safetensors" \
+        "https://huggingface.co/Maverkk/linaZ/resolve/main/adapter_model-2.safetensors"
+else
+    echo "✅ linaZ.safetensors already exists, skipping download."
 fi
 
 # Download additional models
@@ -370,6 +398,10 @@ fi
 
 if [ "$USE_EXTRA_MODEL_PATHS" == "true" ]; then
   COMFYUI_CMD="$COMFYUI_CMD --extra-model-paths-config /comfyui-qwen-template/src/extra_model_paths.yaml"
+fi
+
+if [ -n "$DEFAULT_WORKFLOW" ] && [ -f "$DEFAULT_WORKFLOW" ]; then
+  COMFYUI_CMD="$COMFYUI_CMD --default-workflow $DEFAULT_WORKFLOW"
 fi
 
 nohup $COMFYUI_CMD > "$NETWORK_VOLUME/comfyui_${RUNPOD_POD_ID}_nohup.log" 2>&1 &
