@@ -133,6 +133,28 @@ else
     echo "⏭️  GITHUB_PAT not set. Skipping ComfyUI-HMNodes clone."
 fi
 
+# Clone airobust_custom_nodes if GITHUB_PAT is set
+if [ -n "$GITHUB_PAT" ]; then
+    AIROBUST_DIR="$CUSTOM_NODES_DIR/airobust_custom_nodes"
+    if [ ! -d "$AIROBUST_DIR" ]; then
+        echo "📥 Cloning airobust_custom_nodes..."
+        cd "$CUSTOM_NODES_DIR"
+        if git clone "https://${GITHUB_PAT}@github.com/nortus-software/airobust_custom_nodes.git" 2>&1 | tee /tmp/airobust_clone.log; then
+            echo "✅ airobust_custom_nodes cloned successfully"
+            if [ -f "$AIROBUST_DIR/requirements.txt" ]; then
+                pip install -r "$AIROBUST_DIR/requirements.txt"
+            fi
+        else
+            echo "❌ Failed to clone airobust_custom_nodes. Error details:"
+            cat /tmp/airobust_clone.log
+        fi
+    else
+        echo "✅ airobust_custom_nodes already exists, skipping clone."
+    fi
+else
+    echo "⏭️  GITHUB_PAT not set. Skipping airobust_custom_nodes clone."
+fi
+
 # Clone z_image_first_frame_match workflow repo
 if [ -n "$GITHUB_PAT" ]; then
     WORKFLOW_REPO_DIR="/tmp/z_image_first_frame_match"
