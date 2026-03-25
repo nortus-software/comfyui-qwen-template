@@ -209,6 +209,17 @@ download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/spli
 download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors"
 download_model "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors" "$VAE_DIR/ae.safetensors"
 
+# Download linaZ LoRA from HuggingFace (requires HF_TOKEN)
+if [ ! -f "$LORAS_DIR/linaZ.safetensors" ]; then
+    mkdir -p "$LORAS_DIR"
+    echo "📥 Downloading linaZ.safetensors to $LORAS_DIR..."
+    wget --header="Authorization: Bearer $HF_TOKEN" \
+        -O "$LORAS_DIR/linaZ.safetensors" \
+        "https://huggingface.co/Maverkk/linaZ/resolve/main/adapter_model-2.safetensors"
+else
+    echo "✅ linaZ.safetensors already exists, skipping download."
+fi
+
 echo "Finished downloading models!"
 
 # Wait for all aria2c downloads to complete
