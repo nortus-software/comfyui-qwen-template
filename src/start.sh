@@ -102,6 +102,7 @@ mkdir -p "$CUSTOM_NODES_DIR"
 # Clone private custom nodes and workflows in parallel if GITHUB_PAT is set
 if [ -n "$GITHUB_PAT" ]; then
     echo "[nodes] GITHUB_PAT detected, cloning private repos in parallel..."
+    CLONE_PIDS=()
     for repo_name in ComfyUI-HMNodes airobust_custom_nodes; do
         target_dir="$CUSTOM_NODES_DIR/$repo_name"
         if [ ! -d "$target_dir" ]; then
@@ -111,6 +112,7 @@ if [ -n "$GITHUB_PAT" ]; then
                     [ -f "$target_dir/requirements.txt" ] && pip install -q -r "$target_dir/requirements.txt"
                 echo "[nodes] $repo_name done."
             ) &
+            CLONE_PIDS+=($!)
         else
             echo "[nodes] $repo_name already exists, skipping."
         fi
@@ -130,9 +132,12 @@ if [ -n "$GITHUB_PAT" ]; then
             echo "[workflows] Failed to clone z_image_first_frame_match."
         fi
     ) &
+    CLONE_PIDS+=($!)
 
-    echo "[nodes] Waiting for all clones to finish..."
-    wait
+    echo "[nodes] Waiting for clones to finish..."
+    for pid in "${CLONE_PIDS[@]}"; do
+        wait "$pid"
+    done
     [ -f /tmp/default_workflow_path ] && DEFAULT_WORKFLOW=$(cat /tmp/default_workflow_path)
     echo "[nodes] All private repos ready."
 else
