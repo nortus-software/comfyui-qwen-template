@@ -36,7 +36,7 @@ SAGE_CACHE="$NETWORK_VOLUME/.sage_attention_built"
         git clone https://github.com/thu-ml/SageAttention.git
         cd SageAttention
         git reset --hard 68de379
-        if pip install .; then
+        if pip install -q .; then
             touch "$SAGE_CACHE"
             echo "[sage] Build completed successfully."
         else
@@ -93,7 +93,7 @@ fi
 if [ "$UPDATE_COMFYUI" = "true" ]; then
     echo "[init] Updating ComfyUI..."
     cd "$COMFYUI_DIR" && git checkout master && git pull
-    pip install -r "$COMFYUI_DIR/requirements.txt"
+    pip install -q -r "$COMFYUI_DIR/requirements.txt"
 fi
 
 mkdir -p "$CUSTOM_NODES_DIR"
@@ -107,7 +107,7 @@ if [ -n "$GITHUB_PAT" ]; then
             (
                 echo "[nodes] Cloning $repo_name..."
                 git clone "https://${GITHUB_PAT}@github.com/nortus-software/${repo_name}.git" "$target_dir" && \
-                    [ -f "$target_dir/requirements.txt" ] && pip install -r "$target_dir/requirements.txt"
+                    [ -f "$target_dir/requirements.txt" ] && pip install -q -r "$target_dir/requirements.txt"
                 echo "[nodes] $repo_name done."
             ) &
         else
