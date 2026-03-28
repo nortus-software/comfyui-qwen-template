@@ -1,2 +1,4 @@
 4xFaceUpDAT.pth
 docs/plans/*
+src/__pycache__/*
+tests/__pycache__/*

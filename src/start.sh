@@ -3,6 +3,7 @@
 # Use libtcmalloc for better memory management
 TCMALLOC="$(ldconfig -p | grep -Po "libtcmalloc.so.\d" | head -n 1)"
 export LD_PRELOAD="${TCMALLOC}"
+export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 NETWORK_VOLUME="/workspace"
 BOOT_START=$(date +%s)
@@ -52,10 +53,10 @@ echo "[sage] SageAttention build started in background (PID: $SAGE_PID)"
 if [ ! -d "$NETWORK_VOLUME" ]; then
     echo "[init] NETWORK_VOLUME '$NETWORK_VOLUME' does not exist. Using '/' instead."
     NETWORK_VOLUME="/"
-    jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/ &
+    jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/ > /tmp/jupyter.log 2>&1 &
 else
     echo "[init] Network volume found at $NETWORK_VOLUME"
-    jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &
+    jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace > /tmp/jupyter.log 2>&1 &
 fi
 echo "[init] JupyterLab started in background"
 
