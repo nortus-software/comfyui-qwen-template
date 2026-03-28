@@ -51,38 +51,23 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install "qwen-vl-utils>=0.0.8" opencv-python
 
+
 FROM base AS final
 
+# Only install custom nodes actually used by the workflow
 RUN for repo in \
-    https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git \
     https://github.com/kijai/ComfyUI-KJNodes.git \
     https://github.com/rgthree/rgthree-comfy.git \
     https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git \
-    https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git \
-    https://github.com/Jordach/comfy-plasma.git \
-    https://github.com/ltdrdata/ComfyUI-Impact-Pack.git \
     https://github.com/ClownsharkBatwing/RES4LYF.git \
-    https://github.com/yolain/ComfyUI-Easy-Use.git \
-    https://github.com/WASasquatch/was-node-suite-comfyui.git \
-    https://github.com/theUpsider/ComfyUI-Logic.git \
     https://github.com/cubiq/ComfyUI_essentials.git \
-    https://github.com/chrisgoringe/cg-image-picker.git \
-    https://github.com/chflame163/ComfyUI_LayerStyle.git \
-    https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git \
-    https://github.com/Jonseed/ComfyUI-Detail-Daemon.git \
-    https://github.com/shadowcz007/comfyui-mixlab-nodes.git \
     https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git \
-    https://github.com/bash-j/mikey_nodes.git \
-    https://github.com/chrisgoringe/cg-use-everywhere.git \
-    https://github.com/M1kep/ComfyLiterals.git; \
+    https://github.com/M1kep/ComfyLiterals.git \
+    https://github.com/Hearmeman24/ComfyUI-Realistic-Nodes.git; \
     do \
         cd /ComfyUI/custom_nodes; \
         repo_dir=$(basename "$repo" .git); \
-        if [ "$repo" = "https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git" ]; then \
-            git clone --depth 1 --recursive "$repo"; \
-        else \
-            git clone --depth 1 "$repo"; \
-        fi; \
+        git clone --depth 1 "$repo"; \
         if [ -f "/ComfyUI/custom_nodes/$repo_dir/requirements.txt" ]; then \
             pip install -r "/ComfyUI/custom_nodes/$repo_dir/requirements.txt"; \
         fi; \
@@ -91,8 +76,10 @@ RUN for repo in \
         fi; \
     done
 
-
 COPY src/start_script.sh /start_script.sh
 RUN chmod +x /start_script.sh
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+    CMD curl -sf http://127.0.0.1:8188/ || exit 1
 
 CMD ["/start_script.sh"]
