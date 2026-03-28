@@ -1,0 +1,136 @@
+# Serverless image — everything baked in for minimal cold start
+FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_PREFER_BINARY=1 \
+    PYTHONUNBUFFERED=1 \
+    CMAKE_BUILD_PARALLEL_LEVEL=8
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3.11-dev \
+        python3-pip \
+        curl ffmpeg ninja-build git aria2 git-lfs wget \
+        libgl1 libglib2.0-0 build-essential gcc && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip && \
+    python3.11 -m venv /opt/venv && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+# PyTorch
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --pre torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/nightly/cu128
+
+# Core tooling
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install packaging setuptools wheel
+
+# Runtime libraries
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install pyyaml gdown triton comfy-cli
+
+# ComfyUI
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /usr/bin/yes | comfy --workspace /ComfyUI install
+
+# Pre-install qwen-vl-utils and opencv
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install "qwen-vl-utils>=0.0.8" opencv-python
+
+# Handler dependencies
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install runpod google-cloud-storage requests
+
+# SageAttention — compiled at build time
+RUN --mount=type=cache,target=/root/.cache/pip \
+    export TORCH_CUDA_ARCH_LIST="9.0;12.0" EXT_PARALLEL=4 NVCC_APPEND_FLAGS="--threads 8" MAX_JOBS=32 && \
+    cd /tmp && \
+    git clone https://github.com/thu-ml/SageAttention.git && \
+    cd SageAttention && \
+    git reset --hard 68de379 && \
+    pip install . && \
+    rm -rf /tmp/SageAttention
+
+FROM base AS final
+
+# Only install custom nodes actually used by the workflow
+RUN for repo in \
+    https://github.com/kijai/ComfyUI-KJNodes.git \
+    https://github.com/rgthree/rgthree-comfy.git \
+    https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git \
+    https://github.com/ClownsharkBatwing/RES4LYF.git \
+    https://github.com/cubiq/ComfyUI_essentials.git \
+    https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git \
+    https://github.com/M1kep/ComfyLiterals.git \
+    https://github.com/Hearmeman24/ComfyUI-Realistic-Nodes.git; \
+    do \
+        cd /ComfyUI/custom_nodes; \
+        repo_dir=$(basename "$repo" .git); \
+        git clone --depth 1 "$repo"; \
+        if [ -f "/ComfyUI/custom_nodes/$repo_dir/requirements.txt" ]; then \
+            pip install -r "/ComfyUI/custom_nodes/$repo_dir/requirements.txt"; \
+        fi; \
+        if [ -f "/ComfyUI/custom_nodes/$repo_dir/install.py" ]; then \
+            python "/ComfyUI/custom_nodes/$repo_dir/install.py"; \
+        fi; \
+    done
+
+# Private custom nodes via BuildKit secrets
+RUN --mount=type=secret,id=GITHUB_PAT \
+    cd /ComfyUI/custom_nodes && \
+    git clone --depth 1 "https://$(cat /run/secrets/GITHUB_PAT)@github.com/nortus-software/ComfyUI-HMNodes.git" && \
+    if [ -f "ComfyUI-HMNodes/requirements.txt" ]; then pip install -r ComfyUI-HMNodes/requirements.txt; fi
+
+RUN --mount=type=secret,id=GITHUB_PAT \
+    cd /ComfyUI/custom_nodes && \
+    git clone --depth 1 "https://$(cat /run/secrets/GITHUB_PAT)@github.com/nortus-software/airobust_custom_nodes.git" && \
+    if [ -f "airobust_custom_nodes/requirements.txt" ]; then pip install -r airobust_custom_nodes/requirements.txt; fi
+
+# Workflow JSON — baked in from private repo
+RUN --mount=type=secret,id=GITHUB_PAT \
+    git clone --depth 1 "https://$(cat /run/secrets/GITHUB_PAT)@github.com/nortus-software/z_image_first_frame_match.git" /tmp/workflows && \
+    mkdir -p /ComfyUI/user/default/workflows && \
+    cp /tmp/workflows/*.json /ComfyUI/user/default/workflows/ && \
+    rm -rf /tmp/workflows
+
+# Models — downloaded at build time
+RUN mkdir -p /ComfyUI/models/diffusion_models /ComfyUI/models/text_encoders \
+    /ComfyUI/models/vae /ComfyUI/models/loras /ComfyUI/models/upscale_models
+
+RUN aria2c -x 16 -s 16 -k 1M \
+    -d /ComfyUI/models/diffusion_models -o z_image_turbo_bf16.safetensors \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+
+RUN aria2c -x 16 -s 16 -k 1M \
+    -d /ComfyUI/models/text_encoders -o qwen_3_4b.safetensors \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
+
+RUN aria2c -x 16 -s 16 -k 1M \
+    -d /ComfyUI/models/vae -o ae.safetensors \
+    "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors"
+
+# Private LoRA via BuildKit secret
+RUN --mount=type=secret,id=HF_TOKEN \
+    wget --header="Authorization: Bearer $(cat /run/secrets/HF_TOKEN)" \
+        -O /ComfyUI/models/loras/linaZ.safetensors \
+        "https://huggingface.co/Maverkk/linaZ/resolve/main/adapter_model-2.safetensors"
+
+# Copy handler code
+COPY src/handler.py src/comfyui_client.py src/gcs.py src/config.py \
+     src/source_downloader.py src/workflow_injector.py /app/
+COPY src/__init__.py /app/__init__.py
+
+# Copy startup script
+COPY src/start_serverless.sh /start_serverless.sh
+RUN chmod +x /start_serverless.sh
+
+CMD ["/start_serverless.sh"]
