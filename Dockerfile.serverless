@@ -46,9 +46,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install "qwen-vl-utils>=0.0.8" opencv-python
 
+# ComfyUI's own dependencies
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /ComfyUI/requirements.txt
+
 # Handler dependencies
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install runpod google-cloud-storage requests
+    pip install runpod google-cloud-storage requests sqlalchemy
 
 # SageAttention — compiled at build time (no GPU needed)
 RUN --mount=type=cache,target=/root/.cache/pip \

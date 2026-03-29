@@ -42,6 +42,30 @@ def inject_reference(
     return workflow
 
 
+def inject_lora(workflow: dict, lora_name: str, strength_model: float = 0.85) -> dict:
+    """Update the LoRA filename in the workflow's existing LoRA loader node.
+
+    Finds the first LoraLoader / LoraLoaderModelOnly node and sets its
+    lora_name (widgets_values[0]) and strength (widgets_values[1]).
+    """
+    workflow = copy.deepcopy(workflow)
+
+    lora_node_id = None
+    for node_id, node in workflow.items():
+        class_type = node.get("class_type", "")
+        if "LoraLoader" in class_type:
+            lora_node_id = node_id
+            break
+
+    if lora_node_id is None:
+        raise ValueError("No LoRA loader node found in workflow")
+
+    workflow[lora_node_id]["widgets_values"][0] = lora_name
+    workflow[lora_node_id]["widgets_values"][1] = strength_model
+
+    return workflow
+
+
 def _convert_ui_to_api(ui_workflow: dict) -> dict:
     """Convert ComfyUI UI-format workflow to API-format prompt.
 

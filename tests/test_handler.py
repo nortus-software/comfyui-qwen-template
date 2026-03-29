@@ -17,14 +17,21 @@ MOCK_WORKFLOW = {
 }
 
 
+@patch("src.handler.os.remove")
+@patch("src.handler.os.path.exists", return_value=True)
+@patch("src.handler.shutil.copy2")
+@patch("src.handler.os.makedirs")
+@patch("builtins.open", mock_open())
+@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
 @patch("src.handler.GCSClient")
 @patch("src.handler.ComfyUIClient")
 @patch("src.handler.download_source")
 @patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
-def test_handler_image_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls):
-    """Handler should process an image job end-to-end."""
-    # Setup mocks
-    mock_download.return_value = (b"image-bytes", ".png")
+def test_handler_image_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
+                           mock_inject_lora, mock_makedirs, mock_copy2, mock_exists, mock_remove):
+    """Handler should process an image job end-to-end with LoRA."""
+    # download_source is called twice: once for source, once for lora
+    mock_download.side_effect = [(b"image-bytes", ".png"), (b"lora-bytes", ".safetensors")]
 
     mock_comfyui = MagicMock()
     mock_comfyui_cls.return_value = mock_comfyui
@@ -45,6 +52,7 @@ def test_handler_image_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_g
         "input": {
             "type": "image",
             "source": "https://example.com/photo.png",
+            "lora": "gs://bucket/media/loras/style-v2.safetensors",
             "gcs_output_path": "outputs/job1/"
         }
     }
@@ -56,15 +64,26 @@ def test_handler_image_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_g
     mock_comfyui.upload_image.assert_called_once()
     mock_comfyui.submit_prompt.assert_called_once()
     mock_gcs.upload_bytes.assert_called_once()
+    mock_inject_lora.assert_called_once()
+    assert mock_inject_lora.call_args.kwargs["lora_name"] == "style-v2.safetensors"
+    # Cleanup should have been called
+    assert mock_remove.call_count == 2
 
 
+@patch("src.handler.os.remove")
+@patch("src.handler.os.path.exists", return_value=True)
+@patch("src.handler.shutil.copy2")
+@patch("src.handler.os.makedirs")
+@patch("builtins.open", mock_open())
+@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
 @patch("src.handler.GCSClient")
 @patch("src.handler.ComfyUIClient")
 @patch("src.handler.download_source")
 @patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
-def test_handler_video_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls):
-    """Handler should process a video job with frame parameters."""
-    mock_download.return_value = (b"video-bytes", ".mp4")
+def test_handler_video_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
+                           mock_inject_lora, mock_makedirs, mock_copy2, mock_exists, mock_remove):
+    """Handler should process a video job with frame parameters and LoRA."""
+    mock_download.side_effect = [(b"video-bytes", ".mp4"), (b"lora-bytes", ".safetensors")]
 
     mock_comfyui = MagicMock()
     mock_comfyui_cls.return_value = mock_comfyui
@@ -85,6 +104,7 @@ def test_handler_video_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_g
         "input": {
             "type": "video",
             "source": "gs://bucket/media/videos/clip.mp4",
+            "lora": "gs://bucket/media/loras/style-v2.safetensors",
             "gcs_output_path": "outputs/job2/",
             "frame_start": 5,
             "frame_end": 15,
@@ -106,3 +126,19 @@ def test_handler_missing_input_raises():
 
     result = handler(event)
     assert "error" in result
+
+
+def test_handler_missing_lora_returns_error():
+    """Handler should return error when lora field is missing."""
+    from src.handler import handler
+
+    event = {
+        "input": {
+            "type": "image",
+            "source": "https://example.com/photo.png",
+        }
+    }
+
+    result = handler(event)
+    assert "error" in result
+    assert "lora" in result["error"].lower()

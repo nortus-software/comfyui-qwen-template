@@ -20,6 +20,7 @@ def test_config_loads_defaults():
         assert config.workflow_path == "/ComfyUI/user/default/workflows/workflow.json"
         assert config.gcs_signed_url_expiry == 3600
         assert config.gcs_bucket is None
+        assert config.comfyui_dir == "/ComfyUI"
     finally:
         for k, v in original.items():
             if v is not None:

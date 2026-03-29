@@ -57,3 +57,66 @@ def test_inject_unknown_type_raises():
     workflow = copy.deepcopy(STUB_WORKFLOW)
     with pytest.raises(ValueError, match="Unsupported media type"):
         inject_reference(workflow, media_type="audio", filename="test.wav")
+
+
+# --- inject_lora tests ---
+
+STUB_WORKFLOW_WITH_LORA = {
+    "42": {
+        "class_type": "UNETLoader",
+        "inputs": {},
+        "widgets_values": ["z_image_turbo_bf16.safetensors", "default"],
+    },
+    "40": {
+        "class_type": "LoraLoaderModelOnly",
+        "inputs": {"model": ["42", 0]},
+        "widgets_values": ["linaZ.safetensors", 0.85],
+    },
+    "25": {
+        "class_type": "ClownsharKSampler_Beta",
+        "inputs": {"model": ["40", 0]},
+    },
+}
+
+
+def test_inject_lora_updates_existing_node():
+    """Should update the existing LoRA loader's filename and strength."""
+    from src.workflow_injector import inject_lora
+
+    workflow = copy.deepcopy(STUB_WORKFLOW_WITH_LORA)
+    result = inject_lora(workflow, lora_name="style-v2.safetensors")
+
+    assert result["40"]["widgets_values"][0] == "style-v2.safetensors"
+    assert result["40"]["widgets_values"][1] == 0.85  # default strength
+
+
+def test_inject_lora_custom_strength():
+    """Should respect custom strength_model parameter."""
+    from src.workflow_injector import inject_lora
+
+    workflow = copy.deepcopy(STUB_WORKFLOW_WITH_LORA)
+    result = inject_lora(workflow, lora_name="style-v2.safetensors", strength_model=0.6)
+
+    assert result["40"]["widgets_values"][0] == "style-v2.safetensors"
+    assert result["40"]["widgets_values"][1] == 0.6
+
+
+def test_inject_lora_no_lora_node_raises():
+    """Should raise ValueError if no LoRA loader node found."""
+    from src.workflow_injector import inject_lora
+
+    workflow = {"20": {"class_type": "KSampler", "inputs": {}}}
+    with pytest.raises(ValueError, match="No LoRA loader node"):
+        inject_lora(workflow, lora_name="style.safetensors")
+
+
+def test_inject_lora_does_not_mutate_original():
+    """Should return a new dict, not mutate the input."""
+    from src.workflow_injector import inject_lora
+
+    workflow = copy.deepcopy(STUB_WORKFLOW_WITH_LORA)
+    result = inject_lora(workflow, lora_name="style-v2.safetensors")
+
+    # Original should be unchanged
+    assert workflow["40"]["widgets_values"][0] == "linaZ.safetensors"
+    assert result["40"]["widgets_values"][0] == "style-v2.safetensors"
