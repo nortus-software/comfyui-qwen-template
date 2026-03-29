@@ -27,8 +27,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # PyTorch
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --pre torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/nightly/cu128
+    pip install torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cu128
 
 # Core tooling
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -54,7 +54,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install runpod google-cloud-storage requests sqlalchemy
 
-# SageAttention — compiled at build time (no GPU needed)
+# ── SageAttention — cached separately so rebuilds skip this ──
+FROM base AS sage
 RUN --mount=type=cache,target=/root/.cache/pip \
     export EXT_PARALLEL=1 MAX_JOBS=2 && \
     cd /tmp && \
@@ -67,10 +68,26 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install . && \
     rm -rf /tmp/SageAttention
 
-FROM base AS final
+# ── Models — cached separately so rebuilds skip downloads ──
+FROM base AS models
+RUN mkdir -p /models/diffusion_models /models/text_encoders /models/vae
 
-# Only install custom nodes actually used by the workflow
-RUN for repo in \
+RUN aria2c -x 16 -s 16 -k 1M \
+    -d /models/diffusion_models -o z_image_turbo_bf16.safetensors \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+
+RUN aria2c -x 16 -s 16 -k 1M \
+    -d /models/text_encoders -o qwen_3_4b.safetensors \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
+
+RUN aria2c -x 16 -s 16 -k 1M \
+    -d /models/vae -o ae.safetensors \
+    "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors"
+
+# ── Custom nodes — cached separately ──
+FROM base AS custom-nodes
+RUN --mount=type=cache,target=/root/.cache/pip \
+    for repo in \
     https://github.com/kijai/ComfyUI-KJNodes.git \
     https://github.com/rgthree/rgthree-comfy.git \
     https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git \
@@ -91,6 +108,22 @@ RUN for repo in \
         fi; \
     done
 
+# ── Final image ──
+FROM base AS final
+
+# Copy SageAttention from cached stage
+COPY --from=sage /opt/venv /opt/venv
+
+# Copy custom nodes and their pip deps from cached stage
+COPY --from=custom-nodes /ComfyUI/custom_nodes/ /ComfyUI/custom_nodes/
+COPY --from=custom-nodes /opt/venv /opt/venv
+
+# Copy models from cached stage
+COPY --from=models /models/diffusion_models/ /ComfyUI/models/diffusion_models/
+COPY --from=models /models/text_encoders/ /ComfyUI/models/text_encoders/
+COPY --from=models /models/vae/ /ComfyUI/models/vae/
+RUN mkdir -p /ComfyUI/models/loras /ComfyUI/models/upscale_models
+
 # Private custom nodes via BuildKit secrets
 RUN --mount=type=secret,id=GITHUB_PAT \
     cd /ComfyUI/custom_nodes && \
@@ -108,28 +141,6 @@ RUN --mount=type=secret,id=GITHUB_PAT \
     mkdir -p /ComfyUI/user/default/workflows && \
     cp /tmp/workflows/*.json /ComfyUI/user/default/workflows/ && \
     rm -rf /tmp/workflows
-
-# Models — downloaded at build time
-RUN mkdir -p /ComfyUI/models/diffusion_models /ComfyUI/models/text_encoders \
-    /ComfyUI/models/vae /ComfyUI/models/loras /ComfyUI/models/upscale_models
-
-RUN aria2c -x 16 -s 16 -k 1M \
-    -d /ComfyUI/models/diffusion_models -o z_image_turbo_bf16.safetensors \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
-
-RUN aria2c -x 16 -s 16 -k 1M \
-    -d /ComfyUI/models/text_encoders -o qwen_3_4b.safetensors \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
-
-RUN aria2c -x 16 -s 16 -k 1M \
-    -d /ComfyUI/models/vae -o ae.safetensors \
-    "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors"
-
-# Private LoRA via BuildKit secret
-RUN --mount=type=secret,id=HF_TOKEN \
-    wget --header="Authorization: Bearer $(cat /run/secrets/HF_TOKEN)" \
-        -O /ComfyUI/models/loras/linaZ.safetensors \
-        "https://huggingface.co/Maverkk/linaZ/resolve/main/adapter_model-2.safetensors"
 
 # Copy handler code
 COPY src/handler.py src/comfyui_client.py src/gcs.py src/config.py \

@@ -2,11 +2,11 @@ import os
 import shutil
 import uuid
 
-from src.comfyui_client import ComfyUIClient
-from src.config import Config
-from src.gcs import GCSClient
-from src.source_downloader import download_source
-from src.workflow_injector import inject_lora, inject_reference, load_workflow
+from comfyui_client import ComfyUIClient
+from config import Config
+from gcs import GCSClient
+from source_downloader import download_source
+from workflow_injector import inject_lora, inject_reference, load_workflow
 
 # Output node ID in the workflow (PreviewImage / SaveImage)
 OUTPUT_NODE_ID = "35"
