@@ -25,3 +25,8 @@ class GCSClient:
         """Download file content from GCS."""
         blob = self.bucket.blob(path)
         return blob.download_as_bytes()
+
+    def download_to_file(self, path: str, dest_path: str):
+        """Stream a GCS object to a local file."""
+        blob = self.bucket.blob(path)
+        blob.download_to_filename(dest_path)

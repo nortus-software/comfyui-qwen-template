@@ -52,3 +52,36 @@ def test_download_unknown_scheme_raises():
 
     with pytest.raises(ValueError, match="Unsupported source"):
         download_source("ftp://example.com/file.png")
+
+
+def test_download_source_to_file_https(tmp_path):
+    from src.source_downloader import download_source_to_file
+
+    dest = tmp_path / "out.safetensors"
+    fake_resp = MagicMock()
+    fake_resp.iter_content.return_value = [b"abc", b"def"]
+    fake_resp.raise_for_status = MagicMock()
+    with patch("src.source_downloader.requests.get", return_value=fake_resp) as mget:
+        ext = download_source_to_file("https://example.com/x.safetensors", str(dest))
+    assert ext == ".safetensors"
+    assert dest.read_bytes() == b"abcdef"
+    mget.assert_called_once_with("https://example.com/x.safetensors", stream=True)
+
+
+def test_download_source_to_file_gcs(tmp_path):
+    from src.source_downloader import download_source_to_file
+
+    dest = tmp_path / "out.safetensors"
+    gcs = MagicMock()
+    ext = download_source_to_file(
+        "gs://bucket/path/to/x.safetensors", str(dest), gcs_client=gcs
+    )
+    assert ext == ".safetensors"
+    gcs.download_to_file.assert_called_once_with("path/to/x.safetensors", str(dest))
+
+
+def test_download_source_to_file_unsupported(tmp_path):
+    from src.source_downloader import download_source_to_file
+
+    with pytest.raises(ValueError):
+        download_source_to_file("ftp://nope", str(tmp_path / "x"))

@@ -1,11 +1,11 @@
 import logging
 import os
-import shutil
 import uuid
 
 from comfyui_client import ComfyUIClient
 from config import Config
 from gcs import GCSClient
+from lora_cache import get_lora_path
 from source_downloader import download_source
 from workflow_injector import inject_lora, inject_reference, load_workflow
 
@@ -18,7 +18,6 @@ OUTPUT_NODE_ID = "35"
 
 def handler(event: dict) -> dict:
     """RunPod serverless handler. Processes one image/video generation job."""
-    lora_local_path = None
     lora_dest_path = None
 
     try:
@@ -57,18 +56,14 @@ def handler(event: dict) -> dict:
         source_bytes, source_ext = download_source(source, gcs_client=gcs)
         log.info("Source: %d bytes", len(source_bytes))
 
-        # 3. Download LoRA and copy to ComfyUI models dir
-        log.info("Downloading LoRA: %s", lora_uri)
-        lora_bytes, _ = download_source(lora_uri, gcs_client=gcs)
-        lora_filename = os.path.basename(lora_uri)
-        lora_local_path = os.path.join("/tmp", "loras", lora_filename)
-        os.makedirs(os.path.dirname(lora_local_path), exist_ok=True)
-        with open(lora_local_path, "wb") as f:
-            f.write(lora_bytes)
-
+        # 3. Resolve LoRA via cache (downloads on miss, hits warm cache otherwise)
+        log.info("Resolving LoRA: %s", lora_uri)
+        cached_lora_path, lora_filename = get_lora_path(lora_uri, gcs_client=gcs)
         lora_dest_path = os.path.join(config.comfyui_dir, "models", "loras", lora_filename)
-        shutil.copy2(lora_local_path, lora_dest_path)
-        log.info("LoRA copied to %s", lora_dest_path)
+        if os.path.lexists(lora_dest_path):
+            os.remove(lora_dest_path)
+        os.symlink(cached_lora_path, lora_dest_path)
+        log.info("LoRA symlinked to %s", lora_dest_path)
 
         # 4. Upload reference image and source to ComfyUI
         ref_filename = f"ref_{uuid.uuid4().hex[:8]}{ref_ext}"
@@ -134,10 +129,8 @@ def handler(event: dict) -> dict:
         return {"error": str(e)}
 
     finally:
-        # Cleanup LoRA files to avoid filling disk across jobs
-        if lora_local_path and os.path.exists(lora_local_path):
-            os.remove(lora_local_path)
-        if lora_dest_path and os.path.exists(lora_dest_path):
+        # Cleanup the symlink in ComfyUI's models dir; cache blob persists for reuse
+        if lora_dest_path and os.path.lexists(lora_dest_path):
             os.remove(lora_dest_path)
 
 

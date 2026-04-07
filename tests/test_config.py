@@ -17,7 +17,7 @@ def test_config_loads_defaults():
 
         config = Config()
         assert config.comfyui_url == "http://127.0.0.1:8188"
-        assert config.workflow_path == "/ComfyUI/user/default/workflows/workflow.json"
+        assert config.workflow_path == "/ComfyUI/user/default/workflows/workflow_first_frame_api.json"
         assert config.gcs_signed_url_expiry == 3600
         assert config.gcs_bucket is None
         assert config.comfyui_dir == "/ComfyUI"

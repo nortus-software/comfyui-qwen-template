@@ -34,3 +34,28 @@ def download_source(source: str, gcs_client=None) -> tuple[bytes, str]:
         return resp.content, ext
 
     raise ValueError(f"Unsupported source format: {source[:50]}")
+
+
+def download_source_to_file(source: str, dest_path: str, gcs_client=None) -> str:
+    """Stream-download a source to a file. Returns file extension."""
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+
+    if source.startswith("gs://"):
+        if gcs_client is None:
+            raise ValueError("GCS client required for gs:// sources")
+        path = source.split("/", 3)[3]
+        ext = os.path.splitext(source)[1]
+        gcs_client.download_to_file(path, dest_path)
+        return ext
+
+    if source.startswith("http://") or source.startswith("https://"):
+        resp = requests.get(source, stream=True)
+        resp.raise_for_status()
+        ext = os.path.splitext(source.split("?")[0])[1] or ".bin"
+        with open(dest_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+        return ext
+
+    raise ValueError(f"Unsupported source format for streaming: {source[:50]}")

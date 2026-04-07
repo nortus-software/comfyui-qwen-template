@@ -7,13 +7,16 @@ import pytest
 STUB_WORKFLOW = {
     "37": {
         "class_type": "LoadImage",
-        "inputs": {},
-        "widgets_values": ["placeholder.png", "image"]
+        "inputs": {"image": "placeholder.png"},
     },
     "43": {
         "class_type": "VideoFrameExtractorNode",
-        "inputs": {},
-        "widgets_values": ["placeholder.mp4", 0, 10, 1, 0, "image"]
+        "inputs": {
+            "video": "placeholder.mp4",
+            "start_second": 0,
+            "frame_count": 10,
+            "frame_interval": 1,
+        },
     }
 }
 
@@ -25,9 +28,9 @@ def test_inject_image_sets_load_image_node():
     workflow = copy.deepcopy(STUB_WORKFLOW)
     result = inject_reference(workflow, media_type="image", filename="uploaded_ref.png")
 
-    assert result["37"]["widgets_values"][0] == "uploaded_ref.png"
+    assert result["37"]["inputs"]["image"] == "uploaded_ref.png"
     # Video node should be unchanged
-    assert result["43"]["widgets_values"][0] == "placeholder.mp4"
+    assert result["43"]["inputs"]["video"] == "placeholder.mp4"
 
 
 def test_inject_video_sets_video_node():
@@ -44,10 +47,10 @@ def test_inject_video_sets_video_node():
         frame_step=2,
     )
 
-    assert result["43"]["widgets_values"][0] == "uploaded_clip.mp4"
-    assert result["43"]["widgets_values"][1] == 5
-    assert result["43"]["widgets_values"][2] == 20
-    assert result["43"]["widgets_values"][3] == 2
+    assert result["43"]["inputs"]["video"] == "uploaded_clip.mp4"
+    assert result["43"]["inputs"]["start_second"] == 5
+    assert result["43"]["inputs"]["frame_count"] == 20
+    assert result["43"]["inputs"]["frame_interval"] == 2
 
 
 def test_inject_unknown_type_raises():
@@ -65,12 +68,10 @@ STUB_WORKFLOW_WITH_LORA = {
     "42": {
         "class_type": "UNETLoader",
         "inputs": {},
-        "widgets_values": ["z_image_turbo_bf16.safetensors", "default"],
     },
     "40": {
         "class_type": "LoraLoaderModelOnly",
-        "inputs": {"model": ["42", 0]},
-        "widgets_values": ["linaZ.safetensors", 0.85],
+        "inputs": {"model": ["42", 0], "lora_name": "linaZ.safetensors", "strength_model": 0.85},
     },
     "25": {
         "class_type": "ClownsharKSampler_Beta",
@@ -86,8 +87,8 @@ def test_inject_lora_updates_existing_node():
     workflow = copy.deepcopy(STUB_WORKFLOW_WITH_LORA)
     result = inject_lora(workflow, lora_name="style-v2.safetensors")
 
-    assert result["40"]["widgets_values"][0] == "style-v2.safetensors"
-    assert result["40"]["widgets_values"][1] == 0.85  # default strength
+    assert result["40"]["inputs"]["lora_name"] == "style-v2.safetensors"
+    assert result["40"]["inputs"]["strength_model"] == 0.85
 
 
 def test_inject_lora_custom_strength():
@@ -97,8 +98,8 @@ def test_inject_lora_custom_strength():
     workflow = copy.deepcopy(STUB_WORKFLOW_WITH_LORA)
     result = inject_lora(workflow, lora_name="style-v2.safetensors", strength_model=0.6)
 
-    assert result["40"]["widgets_values"][0] == "style-v2.safetensors"
-    assert result["40"]["widgets_values"][1] == 0.6
+    assert result["40"]["inputs"]["lora_name"] == "style-v2.safetensors"
+    assert result["40"]["inputs"]["strength_model"] == 0.6
 
 
 def test_inject_lora_no_lora_node_raises():
@@ -118,5 +119,5 @@ def test_inject_lora_does_not_mutate_original():
     result = inject_lora(workflow, lora_name="style-v2.safetensors")
 
     # Original should be unchanged
-    assert workflow["40"]["widgets_values"][0] == "linaZ.safetensors"
-    assert result["40"]["widgets_values"][0] == "style-v2.safetensors"
+    assert workflow["40"]["inputs"]["lora_name"] == "linaZ.safetensors"
+    assert result["40"]["inputs"]["lora_name"] == "style-v2.safetensors"
