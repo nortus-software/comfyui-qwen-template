@@ -36,7 +36,12 @@ class ComfyUIClient:
             resp.raise_for_status()
             history = resp.json()
             if prompt_id in history:
-                return history[prompt_id]["outputs"]
+                entry = history[prompt_id]
+                status = entry.get("status", {})
+                if status.get("status_str") == "error":
+                    messages = status.get("messages", [])
+                    raise RuntimeError(f"ComfyUI execution failed: {messages}")
+                return entry["outputs"]
             time.sleep(poll_interval)
         raise TimeoutError(f"ComfyUI job {prompt_id} did not complete within {timeout}s")
 

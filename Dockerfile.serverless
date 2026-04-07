@@ -140,6 +140,7 @@ RUN --mount=type=secret,id=GITHUB_PAT \
     git clone --depth 1 "https://$(cat /run/secrets/GITHUB_PAT)@github.com/nortus-software/z_image_first_frame_match.git" /tmp/workflows && \
     mkdir -p /ComfyUI/user/default/workflows && \
     cp /tmp/workflows/*.json /ComfyUI/user/default/workflows/ && \
+    ls -la /ComfyUI/user/default/workflows/ && \
     rm -rf /tmp/workflows
 
 # Copy handler code
