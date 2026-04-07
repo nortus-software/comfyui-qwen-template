@@ -23,6 +23,7 @@ def handler(event: dict) -> dict:
 
     try:
         job_input = event.get("input", {})
+        job_id = event.get("id", "unknown")
         log.info("Job input: %s", job_input)
 
         media_type = job_input.get("type")
@@ -120,7 +121,7 @@ def handler(event: dict) -> dict:
 
         # 8. Upload to GCS
         if gcs:
-            output_key = f"{gcs_output_path.rstrip('/')}/output_{prompt_id}.png"
+            output_key = f"{gcs_output_path.rstrip('/')}/output_{job_id}.png"
             gcs.upload_bytes(output_bytes, output_key, content_type="image/png")
             signed_url = gcs.get_signed_url(output_key, expiry=config.gcs_signed_url_expiry)
             log.info("Uploaded to GCS: %s", output_key)

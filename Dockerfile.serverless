@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/thu-ml/SageAttention.git && \
     cd SageAttention && \
     git reset --hard 68de379 && \
-    sed -i 's/^compute_capabilities = set()$/compute_capabilities = {"9.0"}/' setup.py && \
+    sed -i 's/^compute_capabilities = set()$/compute_capabilities = {"12.0"}/' setup.py && \
     sed -i '/^device_count/d; /^for i in range/,/compute_capabilities.add/d' setup.py && \
     sed -i 's/if not compute_capabilities:/if False:/' setup.py && \
     pip install . && \
@@ -70,7 +70,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # ── Models — cached separately so rebuilds skip downloads ──
 FROM base AS models
-RUN mkdir -p /models/diffusion_models /models/text_encoders /models/vae
+RUN mkdir -p /models/diffusion_models /models/text_encoders /models/vae /models/hf_cache
 
 RUN aria2c -x 16 -s 16 -k 1M \
     -d /models/diffusion_models -o z_image_turbo_bf16.safetensors \
@@ -83,6 +83,11 @@ RUN aria2c -x 16 -s 16 -k 1M \
 RUN aria2c -x 16 -s 16 -k 1M \
     -d /models/vae -o ae.safetensors \
     "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors"
+
+# Pre-download Qwen2.5-VL-7B-Instruct into HF cache (used by HearmemanAI nodes)
+ENV HF_HOME=/models/hf_cache
+RUN pip install --no-cache-dir huggingface_hub && \
+    python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen2.5-VL-7B-Instruct')"
 
 # ── Custom nodes — cached separately ──
 FROM base AS custom-nodes
@@ -122,7 +127,11 @@ COPY --from=custom-nodes /opt/venv /opt/venv
 COPY --from=models /models/diffusion_models/ /ComfyUI/models/diffusion_models/
 COPY --from=models /models/text_encoders/ /ComfyUI/models/text_encoders/
 COPY --from=models /models/vae/ /ComfyUI/models/vae/
+COPY --from=models /models/hf_cache/ /root/.cache/huggingface/
 RUN mkdir -p /ComfyUI/models/loras /ComfyUI/models/upscale_models
+ENV HF_HOME=/root/.cache/huggingface \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
 # Private custom nodes via BuildKit secrets
 RUN --mount=type=secret,id=GITHUB_PAT \
@@ -136,7 +145,10 @@ RUN --mount=type=secret,id=GITHUB_PAT \
     if [ -f "airobust_custom_nodes/requirements.txt" ]; then pip install -r airobust_custom_nodes/requirements.txt; fi
 
 # Workflow JSON — baked in from private repo
+# Bump WORKFLOW_VERSION to force re-clone of workflow repo
+ARG WORKFLOW_VERSION=1
 RUN --mount=type=secret,id=GITHUB_PAT \
+    echo "workflow version: ${WORKFLOW_VERSION}" && \
     git clone --depth 1 "https://$(cat /run/secrets/GITHUB_PAT)@github.com/nortus-software/z_image_first_frame_match.git" /tmp/workflows && \
     mkdir -p /ComfyUI/user/default/workflows && \
     cp /tmp/workflows/*.json /ComfyUI/user/default/workflows/ && \
