@@ -7,7 +7,14 @@ from config import Config
 from gcs import GCSClient
 from lora_cache import get_lora_path
 from source_downloader import download_source
-from workflow_injector import inject_lora, inject_reference, load_workflow
+from workflow_injector import (
+    inject_ksampler,
+    inject_lora,
+    inject_prompter,
+    inject_reference,
+    inject_video_settings,
+    load_workflow,
+)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("handler")
@@ -30,6 +37,7 @@ def handler(event: dict) -> dict:
         reference_image_uri = job_input.get("reference_image")
         lora_uri = job_input.get("lora")
         gcs_output_path = job_input.get("gcs_output_path", "outputs/")
+        settings = job_input.get("settings") or {}
 
         missing = [k for k, v in {
             "type": media_type,
@@ -83,11 +91,11 @@ def handler(event: dict) -> dict:
             workflow,
             media_type=media_type,
             filename=source_filename,
-            frame_start=job_input.get("frame_start", 0),
-            frame_end=job_input.get("frame_end", 2),
-            frame_step=job_input.get("frame_step", 1),
         )
         workflow = inject_lora(workflow, lora_name=lora_filename)
+        workflow = inject_ksampler(workflow, **settings.get("ksampler", {}))
+        workflow = inject_prompter(workflow, **settings.get("prompter", {}))
+        workflow = inject_video_settings(workflow, **settings.get("video", {}))
         log.info("Workflow loaded and injected")
 
         # 5. Submit to ComfyUI
