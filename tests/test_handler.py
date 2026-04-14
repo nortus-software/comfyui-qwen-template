@@ -264,3 +264,116 @@ def test_handler_missing_lora_returns_error():
     result = handler(event)
     assert "error" in result
     assert "lora" in result["error"].lower()
+
+
+@patch("src.handler.send_webhook", return_value=True)
+@patch("src.handler.os.remove")
+@patch("src.handler.os.symlink")
+@patch("src.handler.os.path.lexists", return_value=True)
+@patch("src.handler.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
+@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
+@patch("src.handler.GCSClient")
+@patch("src.handler.ComfyUIClient")
+@patch("src.handler.download_source")
+@patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
+def test_handler_calls_webhook_on_success(
+    mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
+    mock_inject_lora, mock_get_lora, mock_lexists, mock_symlink, mock_remove,
+    mock_send_webhook,
+):
+    """Handler should POST to webhook_url on success with correct payload."""
+    mock_download.side_effect = [(b"ref-bytes", ".png"), (b"image-bytes", ".png")]
+
+    mock_comfyui = MagicMock()
+    mock_comfyui_cls.return_value = mock_comfyui
+    mock_comfyui.submit_prompt.return_value = "prompt-123"
+    mock_comfyui.poll_until_complete.return_value = {
+        "35": {"images": [{"filename": "output.png", "subfolder": "", "type": "output"}]}
+    }
+    mock_comfyui.get_output_image.return_value = b"output-bytes"
+
+    mock_gcs = MagicMock()
+    mock_gcs_cls.return_value = mock_gcs
+    mock_gcs.get_signed_url.return_value = "https://storage.googleapis.com/signed"
+
+    from src.handler import handler
+
+    event = {
+        "id": "job-42",
+        "input": {
+            "type": "image",
+            "source": "https://example.com/photo.png",
+            "reference_image": "https://example.com/ref.png",
+            "lora": "gs://bucket/lora.safetensors",
+            "gcs_output_path": "outputs/job42/",
+            "webhook_url": "https://api.example.com/callback",
+        },
+    }
+
+    with patch.dict("os.environ", {"GCS_BUCKET": "test-bucket"}):
+        result = handler(event)
+
+    assert result["output_url"] == "https://storage.googleapis.com/signed"
+    assert "webhook_failed" not in result
+
+    mock_send_webhook.assert_called_once()
+    url, payload = mock_send_webhook.call_args.args
+    assert url == "https://api.example.com/callback"
+    assert payload["status"] == "completed"
+    assert payload["output_url"] == "https://storage.googleapis.com/signed"
+    assert payload["metadata"]["job_id"] == "job-42"
+    assert payload["metadata"]["media_type"] == "image"
+    assert "gcs_output_path" in payload["metadata"]
+
+
+@patch("src.handler.send_webhook", return_value=True)
+def test_handler_calls_webhook_on_error(mock_send_webhook):
+    """Handler should POST to webhook_url on validation error."""
+    from src.handler import handler
+
+    event = {
+        "id": "job-fail",
+        "input": {
+            "webhook_url": "https://api.example.com/callback",
+        },
+    }
+
+    result = handler(event)
+
+    assert "error" in result
+    mock_send_webhook.assert_called_once()
+    url, payload = mock_send_webhook.call_args.args
+    assert url == "https://api.example.com/callback"
+    assert payload["status"] == "failed"
+    assert "error" in payload
+
+
+def test_handler_no_webhook_url_skips_webhook():
+    """Handler should not call send_webhook when webhook_url is absent."""
+    from src.handler import handler
+
+    event = {"input": {}}
+
+    with patch("src.handler.send_webhook") as mock_send:
+        result = handler(event)
+
+    assert "error" in result
+    mock_send.assert_not_called()
+
+
+@patch("src.handler.send_webhook", return_value=False)
+def test_handler_sets_webhook_failed_flag(mock_send_webhook):
+    """Handler should add webhook_failed=True when send_webhook returns False."""
+    from src.handler import handler
+
+    event = {
+        "id": "job-wh-fail",
+        "input": {
+            "webhook_url": "https://api.example.com/callback",
+        },
+    }
+
+    result = handler(event)
+
+    assert "error" in result
+    assert result["webhook_failed"] is True

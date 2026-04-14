@@ -7,6 +7,7 @@ from config import Config
 from gcs import GCSClient
 from lora_cache import get_lora_path
 from source_downloader import download_source
+from webhook import send_webhook
 from workflow_injector import (
     inject_ksampler,
     inject_lora,
@@ -38,6 +39,26 @@ def handler(event: dict) -> dict:
         lora_uri = job_input.get("lora")
         gcs_output_path = job_input.get("gcs_output_path", "outputs/")
         settings = job_input.get("settings") or {}
+        webhook_url = job_input.get("webhook_url")
+
+        def _notify(result: dict, success: bool) -> dict:
+            if not webhook_url:
+                return result
+            if success:
+                payload = {
+                    "status": "completed",
+                    "output_url": result["output_url"],
+                    "metadata": {
+                        "job_id": job_id,
+                        "media_type": media_type,
+                        "gcs_output_path": result.get("gcs_output_path", ""),
+                    },
+                }
+            else:
+                payload = {"status": "failed", "error": result["error"]}
+            if not send_webhook(webhook_url, payload):
+                result["webhook_failed"] = True
+            return result
 
         missing = [k for k, v in {
             "type": media_type,
@@ -46,9 +67,9 @@ def handler(event: dict) -> dict:
             "lora": lora_uri,
         }.items() if not v]
         if missing:
-            return {"error": f"Missing required fields: {missing}"}
+            return _notify({"error": f"Missing required fields: {missing}"}, success=False)
         if media_type not in ("image", "video"):
-            return {"error": f"Invalid type: {media_type}. Must be 'image' or 'video'"}
+            return _notify({"error": f"Invalid type: {media_type}. Must be 'image' or 'video'"}, success=False)
 
         config = Config()
         comfyui = ComfyUIClient(config.comfyui_url)
@@ -108,11 +129,11 @@ def handler(event: dict) -> dict:
 
         # 7. Get output image
         if OUTPUT_NODE_ID not in outputs:
-            return {"error": f"No output found at node {OUTPUT_NODE_ID}. Available: {list(outputs.keys())}"}
+            return _notify({"error": f"No output found at node {OUTPUT_NODE_ID}. Available: {list(outputs.keys())}"}, success=False)
 
         output_images = outputs[OUTPUT_NODE_ID].get("images", [])
         if not output_images:
-            return {"error": "No images in output"}
+            return _notify({"error": "No images in output"}, success=False)
 
         first_output = output_images[0]
         output_bytes = comfyui.get_output_image(
@@ -128,13 +149,13 @@ def handler(event: dict) -> dict:
             gcs.upload_bytes(output_bytes, output_key, content_type="image/png")
             signed_url = gcs.get_signed_url(output_key, expiry=config.gcs_signed_url_expiry)
             log.info("Uploaded to GCS: %s", output_key)
-            return {"output_url": signed_url}
+            return _notify({"output_url": signed_url, "gcs_output_path": output_key}, success=True)
 
-        return {"error": "GCS_BUCKET not configured"}
+        return _notify({"error": "GCS_BUCKET not configured"}, success=False)
 
     except Exception as e:
         log.exception("Handler failed")
-        return {"error": str(e)}
+        return _notify({"error": str(e)}, success=False)
 
     finally:
         # Cleanup the symlink in ComfyUI's models dir; cache blob persists for reuse
