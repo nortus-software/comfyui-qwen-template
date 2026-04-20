@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         ipykernel jupyterlab_code_formatter
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    /usr/bin/yes | comfy --workspace /ComfyUI install
+    /usr/bin/yes | comfy --workspace /ComfyUI install --version v0.18.2
 
 # Pre-install qwen-vl-utils and opencv
 RUN --mount=type=cache,target=/root/.cache/pip \
