@@ -26,16 +26,22 @@ MOCK_WORKFLOW = {
 
 
 @patch("src.handler.os.remove")
-@patch("src.handler.os.symlink")
+@patch("pipeline.os.remove")
+@patch("pipeline.os.symlink")
 @patch("src.handler.os.path.lexists", return_value=True)
-@patch("src.handler.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
-@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
+@patch("pipeline.os.path.lexists", return_value=False)
+@patch("pipeline.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
+@patch("workflows.inject_lora", side_effect=lambda wf, **kw: wf)
 @patch("src.handler.GCSClient")
 @patch("src.handler.ComfyUIClient")
-@patch("src.handler.download_source")
-@patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
-def test_handler_image_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
-                           mock_inject_lora, mock_get_lora, mock_lexists, mock_symlink, mock_remove):
+@patch("pipeline.download_source")
+@patch("workflows.load_workflow", return_value=MOCK_WORKFLOW)
+def test_handler_image_job(
+    mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
+    mock_inject_lora, mock_get_lora,
+    mock_pipeline_lexists, mock_handler_lexists,
+    mock_pipeline_symlink, mock_pipeline_remove, mock_handler_remove,
+):
     """Handler should process an image job end-to-end with LoRA."""
     # download_source called for reference image and source
     mock_download.side_effect = [(b"ref-bytes", ".png"), (b"image-bytes", ".png")]
@@ -76,25 +82,31 @@ def test_handler_image_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_g
     assert mock_inject_lora.call_args.kwargs["lora_name"] == "style-v2.safetensors"
     # LoRA was resolved via cache and symlinked, not copied
     mock_get_lora.assert_called_once()
-    mock_symlink.assert_called_once()
-    sym_args = mock_symlink.call_args.args
+    mock_pipeline_symlink.assert_called_once()
+    sym_args = mock_pipeline_symlink.call_args.args
     assert sym_args[0] == "/tmp/lora_cache/blobs/abc.safetensors"
     assert sym_args[1].endswith("style-v2.safetensors")
     # Symlink cleanup runs in finally
-    assert mock_remove.called
+    assert mock_handler_remove.called
 
 
 @patch("src.handler.os.remove")
-@patch("src.handler.os.symlink")
+@patch("pipeline.os.remove")
+@patch("pipeline.os.symlink")
 @patch("src.handler.os.path.lexists", return_value=True)
-@patch("src.handler.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
-@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
+@patch("pipeline.os.path.lexists", return_value=False)
+@patch("pipeline.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
+@patch("workflows.inject_lora", side_effect=lambda wf, **kw: wf)
 @patch("src.handler.GCSClient")
 @patch("src.handler.ComfyUIClient")
-@patch("src.handler.download_source")
-@patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
-def test_handler_video_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
-                           mock_inject_lora, mock_get_lora, mock_lexists, mock_symlink, mock_remove):
+@patch("pipeline.download_source")
+@patch("workflows.load_workflow", return_value=MOCK_WORKFLOW)
+def test_handler_video_job(
+    mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
+    mock_inject_lora, mock_get_lora,
+    mock_pipeline_lexists, mock_handler_lexists,
+    mock_pipeline_symlink, mock_pipeline_remove, mock_handler_remove,
+):
     """Handler should process a video job with frame parameters and LoRA."""
     mock_download.side_effect = [(b"ref-bytes", ".png"), (b"video-bytes", ".mp4")]
 
@@ -133,20 +145,26 @@ def test_handler_video_job(mock_load_wf, mock_download, mock_comfyui_cls, mock_g
 
 
 @patch("src.handler.os.remove")
-@patch("src.handler.os.symlink")
+@patch("pipeline.os.remove")
+@patch("pipeline.os.symlink")
 @patch("src.handler.os.path.lexists", return_value=True)
-@patch("src.handler.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
-@patch("src.handler.inject_video_settings", side_effect=lambda wf, **kw: wf)
-@patch("src.handler.inject_prompter", side_effect=lambda wf, **kw: wf)
-@patch("src.handler.inject_ksampler", side_effect=lambda wf, **kw: wf)
-@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
+@patch("pipeline.os.path.lexists", return_value=False)
+@patch("pipeline.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
+@patch("workflows.inject_video_settings", side_effect=lambda wf, **kw: wf)
+@patch("workflows.inject_prompter", side_effect=lambda wf, **kw: wf)
+@patch("workflows.inject_ksampler", side_effect=lambda wf, **kw: wf)
+@patch("workflows.inject_lora", side_effect=lambda wf, **kw: wf)
 @patch("src.handler.GCSClient")
 @patch("src.handler.ComfyUIClient")
-@patch("src.handler.download_source")
-@patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
-def test_handler_threads_settings_block(mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
-                                        mock_inject_lora, mock_inject_ks, mock_inject_pr, mock_inject_vs,
-                                        mock_get_lora, mock_lexists, mock_symlink, mock_remove):
+@patch("pipeline.download_source")
+@patch("workflows.load_workflow", return_value=MOCK_WORKFLOW)
+def test_handler_threads_settings_block(
+    mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
+    mock_inject_lora, mock_inject_ks, mock_inject_pr, mock_inject_vs,
+    mock_get_lora,
+    mock_pipeline_lexists, mock_handler_lexists,
+    mock_pipeline_symlink, mock_pipeline_remove, mock_handler_remove,
+):
     """Handler should pass each settings sub-block to its injector."""
     mock_download.side_effect = [(b"ref-bytes", ".png"), (b"video-bytes", ".mp4")]
 
@@ -190,21 +208,25 @@ def test_handler_threads_settings_block(mock_load_wf, mock_download, mock_comfyu
 
 
 @patch("src.handler.os.remove")
-@patch("src.handler.os.symlink")
+@patch("pipeline.os.remove")
+@patch("pipeline.os.symlink")
 @patch("src.handler.os.path.lexists", return_value=True)
-@patch("src.handler.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
-@patch("src.handler.inject_video_settings", side_effect=lambda wf, **kw: wf)
-@patch("src.handler.inject_prompter", side_effect=lambda wf, **kw: wf)
-@patch("src.handler.inject_ksampler", side_effect=lambda wf, **kw: wf)
-@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
+@patch("pipeline.os.path.lexists", return_value=False)
+@patch("pipeline.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
+@patch("workflows.inject_video_settings", side_effect=lambda wf, **kw: wf)
+@patch("workflows.inject_prompter", side_effect=lambda wf, **kw: wf)
+@patch("workflows.inject_ksampler", side_effect=lambda wf, **kw: wf)
+@patch("workflows.inject_lora", side_effect=lambda wf, **kw: wf)
 @patch("src.handler.GCSClient")
 @patch("src.handler.ComfyUIClient")
-@patch("src.handler.download_source")
-@patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
+@patch("pipeline.download_source")
+@patch("workflows.load_workflow", return_value=MOCK_WORKFLOW)
 def test_handler_no_settings_calls_injectors_with_empty_kwargs(
     mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
     mock_inject_lora, mock_inject_ks, mock_inject_pr, mock_inject_vs,
-    mock_get_lora, mock_lexists, mock_symlink, mock_remove
+    mock_get_lora,
+    mock_pipeline_lexists, mock_handler_lexists,
+    mock_pipeline_symlink, mock_pipeline_remove, mock_handler_remove,
 ):
     """Without a settings block, injectors are called with empty kwargs."""
     mock_download.side_effect = [(b"ref-bytes", ".png"), (b"img-bytes", ".png")]
@@ -268,17 +290,21 @@ def test_handler_missing_lora_returns_error():
 
 @patch("src.handler.send_webhook", return_value=True)
 @patch("src.handler.os.remove")
-@patch("src.handler.os.symlink")
+@patch("pipeline.os.remove")
+@patch("pipeline.os.symlink")
 @patch("src.handler.os.path.lexists", return_value=True)
-@patch("src.handler.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
-@patch("src.handler.inject_lora", side_effect=lambda wf, **kw: wf)
+@patch("pipeline.os.path.lexists", return_value=False)
+@patch("pipeline.get_lora_path", return_value=("/tmp/lora_cache/blobs/abc.safetensors", "style-v2.safetensors"))
+@patch("workflows.inject_lora", side_effect=lambda wf, **kw: wf)
 @patch("src.handler.GCSClient")
 @patch("src.handler.ComfyUIClient")
-@patch("src.handler.download_source")
-@patch("src.handler.load_workflow", return_value=MOCK_WORKFLOW)
+@patch("pipeline.download_source")
+@patch("workflows.load_workflow", return_value=MOCK_WORKFLOW)
 def test_handler_calls_webhook_on_success(
     mock_load_wf, mock_download, mock_comfyui_cls, mock_gcs_cls,
-    mock_inject_lora, mock_get_lora, mock_lexists, mock_symlink, mock_remove,
+    mock_inject_lora, mock_get_lora,
+    mock_pipeline_lexists, mock_handler_lexists,
+    mock_pipeline_symlink, mock_pipeline_remove, mock_handler_remove,
     mock_send_webhook,
 ):
     """Handler should POST to webhook_url on success with correct payload."""
@@ -377,3 +403,47 @@ def test_handler_sets_webhook_failed_flag(mock_send_webhook):
 
     assert "error" in result
     assert result["webhook_failed"] is True
+
+
+# --- workflow dispatcher tests ---
+
+def test_handler_unknown_workflow_returns_error():
+    from src.handler import handler
+
+    event = {"input": {"workflow": "does_not_exist"}}
+    result = handler(event)
+    assert "error" in result
+    assert "Unknown workflow" in result["error"]
+
+
+@patch("src.handler.ComfyUIClient")
+@patch("src.handler.get_workflow_def")
+def test_handler_routes_to_first_frame_image_processor(mock_get_wf, mock_comfyui_cls):
+    """When workflow='first_frame_image', the registry's processor is called."""
+    from workflows import WorkflowDef
+    fake_processor = MagicMock(return_value={"output_url": "https://x"})
+    mock_get_wf.return_value = WorkflowDef(
+        name="first_frame_image", filename="x.json", process=fake_processor,
+    )
+
+    from src.handler import handler
+    handler({"input": {"workflow": "first_frame_image"}})
+
+    mock_get_wf.assert_called_once_with("first_frame_image")
+    fake_processor.assert_called_once()
+
+
+@patch("src.handler.ComfyUIClient")
+@patch("src.handler.get_workflow_def")
+def test_handler_defaults_workflow_to_first_frame_when_missing(mock_get_wf, mock_comfyui_cls):
+    from workflows import WorkflowDef
+    fake_processor = MagicMock(return_value={"output_url": "https://x"})
+    mock_get_wf.return_value = WorkflowDef(
+        name="first_frame", filename="x.json", process=fake_processor,
+    )
+
+    from src.handler import handler
+    handler({"input": {}})  # no workflow field
+
+    mock_get_wf.assert_called_once_with(None)
+    fake_processor.assert_called_once()
