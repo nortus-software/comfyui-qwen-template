@@ -90,11 +90,11 @@ def inject_video_settings(
     return workflow
 
 
-MODEL_REFERENCE_NODE = "43"
+NODE_43_IMAGE = "43"
 
 
-def inject_model_reference(workflow: dict, filename: str) -> dict:
-    """Inject a model reference image into the LoadImage node 43."""
+def inject_node43_image(workflow: dict, filename: str) -> dict:
+    """Inject an image filename into the LoadImage node 43 (secondary image input)."""
     workflow = copy.deepcopy(workflow)
-    workflow[MODEL_REFERENCE_NODE]["inputs"]["image"] = filename
+    workflow[NODE_43_IMAGE]["inputs"]["image"] = filename
     return workflow

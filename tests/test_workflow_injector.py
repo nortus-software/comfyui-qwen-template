@@ -272,7 +272,7 @@ def test_inject_video_settings_does_not_mutate_original():
     assert workflow["43"]["inputs"]["start_second"] == 0
 
 
-# --- inject_model_reference tests ---
+# --- inject_node43_image tests ---
 
 STUB_WORKFLOW_MODEL_REF = {
     "37": {
@@ -286,21 +286,21 @@ STUB_WORKFLOW_MODEL_REF = {
 }
 
 
-def test_inject_model_reference_sets_node_43_image():
-    from src.workflow_injector import inject_model_reference
+def test_inject_node43_image_sets_node_43_image():
+    from src.workflow_injector import inject_node43_image
 
     workflow = copy.deepcopy(STUB_WORKFLOW_MODEL_REF)
-    result = inject_model_reference(workflow, filename="model.png")
+    result = inject_node43_image(workflow, filename="model.png")
 
     assert result["43"]["inputs"]["image"] == "model.png"
     # Node 37 (character ref) must remain untouched
     assert result["37"]["inputs"]["image"] == "char.png"
 
 
-def test_inject_model_reference_does_not_mutate_original():
-    from src.workflow_injector import inject_model_reference
+def test_inject_node43_image_does_not_mutate_original():
+    from src.workflow_injector import inject_node43_image
 
     workflow = copy.deepcopy(STUB_WORKFLOW_MODEL_REF)
-    inject_model_reference(workflow, filename="model.png")
+    inject_node43_image(workflow, filename="model.png")
 
     assert workflow["43"]["inputs"]["image"] == ""

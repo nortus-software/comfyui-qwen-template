@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from workflow_injector import (
     inject_ksampler,
     inject_lora,
-    inject_model_reference,
+    inject_node43_image,
     inject_prompter,
     inject_reference,
     inject_video_settings,
@@ -98,16 +98,18 @@ def process_first_frame_image(job_input: dict, ctx) -> dict:
             )
         }
 
-    ref_filename = download_and_upload_image(reference_image, "ref", ctx)
+    # model_reference = character (same role as old workflow's reference_image) → node 37
+    # reference_image  = driving/secondary image → node 43
     model_filename = download_and_upload_image(model_reference, "model", ctx)
+    ref_filename = download_and_upload_image(reference_image, "ref", ctx)
     lora_filename, lora_dest = setup_lora(lora_uri, ctx)
     ctx.lora_dest_path = lora_dest
 
     wf_def = WORKFLOWS["first_frame_image"]
     workflow_path = os.path.join(ctx.config.workflows_dir, wf_def.filename)
     workflow = load_workflow(workflow_path)
-    workflow = inject_reference(workflow, media_type="image", filename=ref_filename)
-    workflow = inject_model_reference(workflow, filename=model_filename)
+    workflow = inject_reference(workflow, media_type="image", filename=model_filename)
+    workflow = inject_node43_image(workflow, filename=ref_filename)
     workflow = inject_lora(workflow, lora_name=lora_filename)
     workflow = inject_ksampler(workflow, **settings.get("ksampler", {}))
     workflow = inject_prompter(workflow, **settings.get("prompter", {}))

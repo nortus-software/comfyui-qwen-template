@@ -93,7 +93,7 @@ def test_strict_rejects_settings_video():
 @patch("src.workflows.upload_output", return_value={"output_url": "https://signed", "gcs_output_path": "outputs/output_job-img-1.png"})
 @patch("src.workflows.submit_and_fetch_output", return_value=b"out-bytes")
 @patch("src.workflows.setup_lora", return_value=("lora.safetensors", "/ComfyUI/models/loras/lora.safetensors"))
-@patch("src.workflows.download_and_upload_image", side_effect=["ref_abc.png", "model_def.png"])
+@patch("src.workflows.download_and_upload_image", side_effect=["model_def.png", "ref_abc.png"])
 @patch("src.workflows.load_workflow", return_value={
     "37": {"class_type": "LoadImage", "inputs": {"image": ""}},
     "43": {"class_type": "LoadImage", "inputs": {"image": ""}},
@@ -118,18 +118,18 @@ def test_happy_path_injects_into_correct_nodes(
     result = process_first_frame_image(job_input, _ctx())
 
     assert result["output_url"] == "https://signed"
-    # download_and_upload_image was called for ref and model
+    # download order: model first (→ node 37), then reference (→ node 43)
     assert mock_dl_upload.call_count == 2
-    assert mock_dl_upload.call_args_list[0].args[0] == "gs://b/char.jpg"
-    assert mock_dl_upload.call_args_list[0].args[1] == "ref"
-    assert mock_dl_upload.call_args_list[1].args[0] == "gs://b/model.jpg"
-    assert mock_dl_upload.call_args_list[1].args[1] == "model"
+    assert mock_dl_upload.call_args_list[0].args[0] == "gs://b/model.jpg"
+    assert mock_dl_upload.call_args_list[0].args[1] == "model"
+    assert mock_dl_upload.call_args_list[1].args[0] == "gs://b/char.jpg"
+    assert mock_dl_upload.call_args_list[1].args[1] == "ref"
     mock_lora.assert_called_once()
     mock_submit.assert_called_once()
     submitted_workflow = mock_submit.call_args.args[0]
-    # ref → 37, model → 43
-    assert submitted_workflow["37"]["inputs"]["image"] == "ref_abc.png"
-    assert submitted_workflow["43"]["inputs"]["image"] == "model_def.png"
+    # model_reference (character) → 37, reference_image (driving) → 43
+    assert submitted_workflow["37"]["inputs"]["image"] == "model_def.png"
+    assert submitted_workflow["43"]["inputs"]["image"] == "ref_abc.png"
     # ksampler / prompter / lora applied
     assert submitted_workflow["25"]["inputs"]["denoise"] == 0.7
     assert submitted_workflow["25"]["inputs"]["cfg"] == 1.5
@@ -140,7 +140,7 @@ def test_happy_path_injects_into_correct_nodes(
 @patch("src.workflows.upload_output", return_value={})
 @patch("src.workflows.submit_and_fetch_output", return_value=b"")
 @patch("src.workflows.setup_lora", return_value=("lora.safetensors", "/x"))
-@patch("src.workflows.download_and_upload_image", side_effect=["ref.png", "model.png"])
+@patch("src.workflows.download_and_upload_image", side_effect=["model.png", "ref.png"])
 @patch("src.workflows.load_workflow", return_value={
     "37": {"class_type": "LoadImage", "inputs": {"image": ""}},
     "43": {"class_type": "LoadImage", "inputs": {"image": ""}},
