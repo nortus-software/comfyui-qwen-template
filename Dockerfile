@@ -45,7 +45,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         ipykernel jupyterlab_code_formatter
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    /usr/bin/yes | comfy --workspace /ComfyUI install
+    git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git /ComfyUI && \
+    pip install -r /ComfyUI/requirements.txt
 
 # Pre-install qwen-vl-utils and opencv
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -57,6 +58,7 @@ FROM base AS final
 # Pre-install custom node deps into /opt/venv, then drop the source tree.
 # At runtime, start.sh clones ComfyUI + nodes directly onto the network volume.
 RUN for repo in \
+    https://github.com/ltdrdata/ComfyUI-Manager.git \
     https://github.com/kijai/ComfyUI-KJNodes.git \
     https://github.com/rgthree/rgthree-comfy.git \
     https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git \

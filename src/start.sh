@@ -79,8 +79,9 @@ VAE_DIR="$NETWORK_VOLUME/ComfyUI/models/vae"
 CUSTOM_NODES_DIR="$NETWORK_VOLUME/ComfyUI/custom_nodes"
 
 if [ ! -d "$COMFYUI_DIR" ]; then
-    echo "[init] Installing ComfyUI to $COMFYUI_DIR..."
-    yes | comfy --workspace "$COMFYUI_DIR" install
+    echo "[init] Cloning ComfyUI to $COMFYUI_DIR..."
+    git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "$COMFYUI_DIR"
+    pip install -q -r "$COMFYUI_DIR/requirements.txt"
 else
     echo "[init] ComfyUI already at $COMFYUI_DIR"
 fi
@@ -97,6 +98,7 @@ CLONE_PIDS=()
 
 # Public custom nodes — deps are pre-installed in /opt/venv at image build
 PUBLIC_NODES=(
+    "https://github.com/ltdrdata/ComfyUI-Manager.git"
     "https://github.com/kijai/ComfyUI-KJNodes.git"
     "https://github.com/rgthree/rgthree-comfy.git"
     "https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git"
