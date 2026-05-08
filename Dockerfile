@@ -1,5 +1,8 @@
 # Use multi-stage build with caching optimizations
-FROM nvidia/cuda:13.0.0-cudnn-devel-ubuntu24.04 AS base
+ARG CUDA_VERSION=12.8.0
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04 AS base
+ARG TORCH_INDEX_URL
 
 # Consolidated environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -32,7 +35,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --pre torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/nightly/cu130
+        --index-url ${TORCH_INDEX_URL}
 
 # Core Python tooling
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -66,7 +69,6 @@ RUN for repo in \
     https://github.com/cubiq/ComfyUI_essentials.git \
     https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git \
     https://github.com/M1kep/ComfyLiterals.git \
-    https://github.com/Hearmeman24/ComfyUI-Realistic-Nodes.git \
     https://github.com/city96/ComfyUI-GGUF.git \
     https://github.com/crystian/ComfyUI-Crystools.git; \
     do \

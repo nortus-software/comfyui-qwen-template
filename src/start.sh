@@ -106,7 +106,6 @@ PUBLIC_NODES=(
     "https://github.com/cubiq/ComfyUI_essentials.git"
     "https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git"
     "https://github.com/M1kep/ComfyLiterals.git"
-    "https://github.com/Hearmeman24/ComfyUI-Realistic-Nodes.git"
     "https://github.com/city96/ComfyUI-GGUF.git"
     "https://github.com/crystian/ComfyUI-Crystools.git"
 )
