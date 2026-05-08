@@ -19,11 +19,6 @@ if [ -f "/workspace/additional_params.sh" ]; then
     /workspace/additional_params.sh
 fi
 
-if ! which aria2 > /dev/null 2>&1; then
-    echo "[init] Installing aria2..."
-    apt-get update && apt-get install -y aria2
-fi
-
 # Build SageAttention in background (cached on network volume after first build)
 SAGE_CACHE="$NETWORK_VOLUME/.sage_attention_built"
 (
@@ -36,7 +31,7 @@ SAGE_CACHE="$NETWORK_VOLUME/.sage_attention_built"
         rm -rf SageAttention
         git clone https://github.com/thu-ml/SageAttention.git
         cd SageAttention
-        git reset --hard 68de379
+        git reset --hard 5a6f53c7
         if pip install -q .; then
             touch "$SAGE_CACHE"
             echo "[sage] Build completed successfully."
@@ -84,8 +79,8 @@ VAE_DIR="$NETWORK_VOLUME/ComfyUI/models/vae"
 CUSTOM_NODES_DIR="$NETWORK_VOLUME/ComfyUI/custom_nodes"
 
 if [ ! -d "$COMFYUI_DIR" ]; then
-    echo "[init] Moving ComfyUI to $COMFYUI_DIR..."
-    mv /ComfyUI "$COMFYUI_DIR"
+    echo "[init] Installing ComfyUI to $COMFYUI_DIR..."
+    yes | comfy --workspace "$COMFYUI_DIR" install
 else
     echo "[init] ComfyUI already at $COMFYUI_DIR"
 fi
@@ -98,11 +93,37 @@ if [ "$UPDATE_COMFYUI" = "true" ]; then
 fi
 
 mkdir -p "$CUSTOM_NODES_DIR"
+CLONE_PIDS=()
 
-# Clone private custom nodes and workflows in parallel if GITHUB_PAT is set
+# Public custom nodes — deps are pre-installed in /opt/venv at image build
+PUBLIC_NODES=(
+    "https://github.com/kijai/ComfyUI-KJNodes.git"
+    "https://github.com/rgthree/rgthree-comfy.git"
+    "https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git"
+    "https://github.com/ClownsharkBatwing/RES4LYF.git"
+    "https://github.com/cubiq/ComfyUI_essentials.git"
+    "https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git"
+    "https://github.com/M1kep/ComfyLiterals.git"
+    "https://github.com/Hearmeman24/ComfyUI-Realistic-Nodes.git"
+    "https://github.com/city96/ComfyUI-GGUF.git"
+    "https://github.com/crystian/ComfyUI-Crystools.git"
+)
+for repo in "${PUBLIC_NODES[@]}"; do
+    repo_dir=$(basename "$repo" .git)
+    target_dir="$CUSTOM_NODES_DIR/$repo_dir"
+    if [ ! -d "$target_dir" ]; then
+        (
+            echo "[nodes] Cloning $repo_dir..."
+            git clone --depth 1 "$repo" "$target_dir" 2>&1 | tail -n 1
+            echo "[nodes] $repo_dir done."
+        ) &
+        CLONE_PIDS+=($!)
+    fi
+done
+
+# Private custom nodes and workflow repo (require GITHUB_PAT)
 if [ -n "$GITHUB_PAT" ]; then
     echo "[nodes] GITHUB_PAT detected, cloning private repos in parallel..."
-    CLONE_PIDS=()
     for repo_name in ComfyUI-HMNodes airobust_custom_nodes; do
         target_dir="$CUSTOM_NODES_DIR/$repo_name"
         if [ ! -d "$target_dir" ]; then
@@ -118,7 +139,6 @@ if [ -n "$GITHUB_PAT" ]; then
         fi
     done
 
-    # Clone workflow repo
     WORKFLOW_REPO_DIR="/tmp/z_image_first_frame_match"
     rm -rf "$WORKFLOW_REPO_DIR"
     (
@@ -133,16 +153,16 @@ if [ -n "$GITHUB_PAT" ]; then
         fi
     ) &
     CLONE_PIDS+=($!)
-
-    echo "[nodes] Waiting for clones to finish..."
-    for pid in "${CLONE_PIDS[@]}"; do
-        wait "$pid"
-    done
-    [ -f /tmp/default_workflow_path ] && DEFAULT_WORKFLOW=$(cat /tmp/default_workflow_path)
-    echo "[nodes] All private repos ready."
 else
     echo "[nodes] GITHUB_PAT not set, skipping private repos."
 fi
+
+echo "[nodes] Waiting for clones to finish..."
+for pid in "${CLONE_PIDS[@]}"; do
+    wait "$pid"
+done
+[ -f /tmp/default_workflow_path ] && DEFAULT_WORKFLOW=$(cat /tmp/default_workflow_path)
+echo "[nodes] All custom nodes ready."
 
 # Download models in parallel
 download_model() {
@@ -175,20 +195,42 @@ download_model() {
 echo "--------------------------------------"
 echo "[download] Downloading models..."
 echo "--------------------------------------"
+# Z-Image stack (existing workflow_first_frame_image)
 download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "$DIFFUSION_MODELS_DIR/z_image_turbo_bf16.safetensors"
 download_model "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors"
 download_model "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/ae.safetensors" "$VAE_DIR/ae.safetensors"
 
-# Download LoRA (requires HF_TOKEN)
-if [ ! -f "$LORAS_DIR/linaZ.safetensors" ]; then
-    mkdir -p "$LORAS_DIR"
-    echo "[download] Starting download: linaZ.safetensors (LoRA)"
-    wget --header="Authorization: Bearer $HF_TOKEN" \
-        -O "$LORAS_DIR/linaZ.safetensors" \
-        "https://huggingface.co/Maverkk/linaZ/resolve/main/adapter_model-2.safetensors" &
-else
-    echo "[download] linaZ.safetensors already exists, skipping."
-fi
+# Qwen-Image stack (new workflow_qwen_i2i_minimal / _faithful)
+download_model "https://huggingface.co/city96/Qwen-Image-gguf/resolve/main/qwen-image-Q8_0.gguf" "$DIFFUSION_MODELS_DIR/qwen-image-Q8_0.gguf"
+download_model "https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-UD-Q8_K_XL.gguf" "$TEXT_ENCODERS_DIR/Qwen2.5-VL-7B-Instruct-UD-Q8_K_XL.gguf"
+download_model "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors" "$VAE_DIR/qwen_image_vae.safetensors"
+
+# Qwen LoRAs (public)
+download_model "https://huggingface.co/BauDevs/Lora_qwen_styles/resolve/main/1GIRL_QWEN_V3.safetensors" "$LORAS_DIR/1girl-qwen_v3.safetensors"
+download_model "https://huggingface.co/BauDevs/Lora_qwen_styles/resolve/main/nicegirls_alternative.safetensors" "$LORAS_DIR/NiceGirls_qwen.safetensors"
+download_model "https://huggingface.co/Danrisi/Qwen-image_SamsungCam_UltraReal/resolve/main/Samsung.safetensors" "$LORAS_DIR/samsungcam_qwen.safetensors"
+
+# Character LoRAs (require HF_TOKEN)
+download_lora_with_token() {
+    local dest="$1"
+    local url="$2"
+    local label="$3"
+    if [ -f "$dest" ]; then
+        echo "[download] $label already exists, skipping."
+    else
+        mkdir -p "$(dirname "$dest")"
+        echo "[download] Starting download: $label"
+        aria2c -x 16 -s 16 -k 1M --continue=true \
+            --header="Authorization: Bearer $HF_TOKEN" \
+            -d "$(dirname "$dest")" -o "$(basename "$dest")" "$url" &
+    fi
+}
+download_lora_with_token "$LORAS_DIR/linaZ.safetensors" \
+    "https://huggingface.co/Maverkk/linaZ/resolve/main/adapter_model-2.safetensors" \
+    "linaZ.safetensors (Z-Image character LoRA)"
+download_lora_with_token "$LORAS_DIR/lina_qwen.safetensors" \
+    "https://huggingface.co/Maverkk/loralina/resolve/main/adapter_model.safetensors" \
+    "lina_qwen.safetensors (Qwen-Image character LoRA)"
 
 # Track which files are being downloaded for progress reporting
 DOWNLOAD_FILES=(
@@ -196,6 +238,13 @@ DOWNLOAD_FILES=(
     "$TEXT_ENCODERS_DIR/qwen_3_4b.safetensors"
     "$VAE_DIR/ae.safetensors"
     "$LORAS_DIR/linaZ.safetensors"
+    "$DIFFUSION_MODELS_DIR/qwen-image-Q8_0.gguf"
+    "$TEXT_ENCODERS_DIR/Qwen2.5-VL-7B-Instruct-UD-Q8_K_XL.gguf"
+    "$VAE_DIR/qwen_image_vae.safetensors"
+    "$LORAS_DIR/1girl-qwen_v3.safetensors"
+    "$LORAS_DIR/NiceGirls_qwen.safetensors"
+    "$LORAS_DIR/samsungcam_qwen.safetensors"
+    "$LORAS_DIR/lina_qwen.safetensors"
 )
 
 get_file_size() {
@@ -205,7 +254,7 @@ get_file_size() {
 # Wait for all downloads with per-file progress and ETA
 echo "[download] Waiting for downloads to complete..."
 declare -A PREV_SIZES
-while pgrep -x "aria2c" > /dev/null || pgrep -x "wget" > /dev/null; do
+while pgrep -x "aria2c" > /dev/null; do
     for f in "${DOWNLOAD_FILES[@]}"; do
         [ -f "$f" ] || continue
         fname=$(basename "$f")
@@ -284,7 +333,15 @@ else
 fi
 
 # Build ComfyUI launch command
-COMFYUI_CMD="python3 $NETWORK_VOLUME/ComfyUI/main.py --listen $SAGE_FLAG"
+# COMFY_VERBOSE=true (default in dev / when IS_DEV=true) enables --verbose DEBUG
+# and live preview, useful for per-node timing in the captured nohup log.
+if [ "${COMFY_VERBOSE:-${IS_DEV:-false}}" = "true" ]; then
+    VERBOSE_FLAGS="--verbose DEBUG --preview-method auto"
+else
+    VERBOSE_FLAGS=""
+fi
+
+COMFYUI_CMD="python3 $NETWORK_VOLUME/ComfyUI/main.py --listen $SAGE_FLAG $VERBOSE_FLAGS"
 
 if [ "$USE_EXTRA_MODEL_PATHS" = "true" ]; then
     COMFYUI_CMD="$COMFYUI_CMD --extra-model-paths-config /comfyui-qwen-template/src/extra_model_paths.yaml"

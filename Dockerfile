@@ -1,5 +1,5 @@
 # Use multi-stage build with caching optimizations
-FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 AS base
+FROM nvidia/cuda:13.0.0-cudnn-devel-ubuntu24.04 AS base
 
 # Consolidated environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -32,7 +32,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --pre torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/nightly/cu128
+        --index-url https://download.pytorch.org/whl/nightly/cu130
 
 # Core Python tooling
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -54,7 +54,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 FROM base AS final
 
-# Only install custom nodes actually used by the workflow
+# Pre-install custom node deps into /opt/venv, then drop the source tree.
+# At runtime, start.sh clones ComfyUI + nodes directly onto the network volume.
 RUN for repo in \
     https://github.com/kijai/ComfyUI-KJNodes.git \
     https://github.com/rgthree/rgthree-comfy.git \
@@ -63,7 +64,9 @@ RUN for repo in \
     https://github.com/cubiq/ComfyUI_essentials.git \
     https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git \
     https://github.com/M1kep/ComfyLiterals.git \
-    https://github.com/Hearmeman24/ComfyUI-Realistic-Nodes.git; \
+    https://github.com/Hearmeman24/ComfyUI-Realistic-Nodes.git \
+    https://github.com/city96/ComfyUI-GGUF.git \
+    https://github.com/crystian/ComfyUI-Crystools.git; \
     do \
         cd /ComfyUI/custom_nodes; \
         repo_dir=$(basename "$repo" .git); \
@@ -74,7 +77,7 @@ RUN for repo in \
         if [ -f "/ComfyUI/custom_nodes/$repo_dir/install.py" ]; then \
             python "/ComfyUI/custom_nodes/$repo_dir/install.py"; \
         fi; \
-    done
+    done && rm -rf /ComfyUI
 
 COPY src/start_script.sh /start_script.sh
 RUN chmod +x /start_script.sh
