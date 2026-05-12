@@ -205,6 +205,9 @@ download_model "https://huggingface.co/modelzpalace/ae.safetensors/resolve/main/
 # Qwen-Image stack (new workflow_qwen_i2i_minimal / _faithful)
 download_model "https://huggingface.co/city96/Qwen-Image-gguf/resolve/main/qwen-image-Q8_0.gguf" "$DIFFUSION_MODELS_DIR/qwen-image-Q8_0.gguf"
 download_model "https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-UD-Q8_K_XL.gguf" "$TEXT_ENCODERS_DIR/Qwen2.5-VL-7B-Instruct-UD-Q8_K_XL.gguf"
+# Vision projector (mmproj) for the VL encoder — required for Qwen-Image-Edit workflows.
+# Filename prefix must match the encoder so ComfyUI-GGUF auto-pairs them.
+download_model "https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/mmproj-F16.gguf" "$TEXT_ENCODERS_DIR/Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"
 download_model "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors" "$VAE_DIR/qwen_image_vae.safetensors"
 
 # Qwen LoRAs (public)
@@ -242,6 +245,7 @@ DOWNLOAD_FILES=(
     "$LORAS_DIR/linaZ.safetensors"
     "$DIFFUSION_MODELS_DIR/qwen-image-Q8_0.gguf"
     "$TEXT_ENCODERS_DIR/Qwen2.5-VL-7B-Instruct-UD-Q8_K_XL.gguf"
+    "$TEXT_ENCODERS_DIR/Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"
     "$VAE_DIR/qwen_image_vae.safetensors"
     "$LORAS_DIR/1girl-qwen_v3.safetensors"
     "$LORAS_DIR/NiceGirls_qwen.safetensors"
