@@ -32,7 +32,7 @@ SAGE_CACHE="$NETWORK_VOLUME/.sage_attention_built"
         git clone https://github.com/thu-ml/SageAttention.git
         cd SageAttention
         git reset --hard 5a6f53c7
-        if pip install -q .; then
+        if pip install --no-build-isolation -q .; then
             touch "$SAGE_CACHE"
             echo "[sage] Build completed successfully."
         else
@@ -190,7 +190,8 @@ download_model() {
     rm -f "${full_path}.aria2" "$full_path"
 
     echo "[download] Starting download: $destination_file"
-    aria2c -x 16 -s 16 -k 1M --continue=true -d "$destination_dir" -o "$destination_file" "$url" &
+    aria2c -x 4 -s 4 -k 1M --continue=true --console-log-level=warn --summary-interval=0 \
+        -d "$destination_dir" -o "$destination_file" "$url" &
 }
 
 echo "--------------------------------------"
@@ -221,7 +222,7 @@ download_lora_with_token() {
     else
         mkdir -p "$(dirname "$dest")"
         echo "[download] Starting download: $label"
-        aria2c -x 16 -s 16 -k 1M --continue=true \
+        aria2c -x 4 -s 4 -k 1M --continue=true --console-log-level=warn --summary-interval=0 \
             --header="Authorization: Bearer $HF_TOKEN" \
             -d "$(dirname "$dest")" -o "$(basename "$dest")" "$url" &
     fi
